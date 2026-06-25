@@ -15,6 +15,7 @@ limitations under the License.
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/gemalto/helm-spray/v4/internal/log"
@@ -81,6 +82,8 @@ var releasePrefixPattern = regexp.MustCompile("^[a-zA-Z0-9-]+$")
 func NewRootCmd() *cobra.Command {
 
 	s := &helmspray.Spray{}
+
+	var output string
 
 	cmd := &cobra.Command{
 		Use:          "helm spray [CHART]",
@@ -157,6 +160,21 @@ func NewRootCmd() *cobra.Command {
 				log.Info(1, "processing chart from local file or directory \"%s\"...", s.ChartName)
 			}
 
+			if output == "json" {
+				plan, err := s.Plan()
+				if err != nil {
+					return fmt.Errorf("computing deployment plan: %w", err)
+				}
+				encoded, err := json.MarshalIndent(plan, "", "  ")
+				if err != nil {
+					return fmt.Errorf("encoding deployment plan: %w", err)
+				}
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(encoded))
+				return nil
+			} else if output != "" {
+				return fmt.Errorf("unsupported --output format %q (supported: json)", output)
+			}
+
 			return s.Spray(cmd.Context())
 		},
 	}
@@ -179,6 +197,7 @@ func NewRootCmd() *cobra.Command {
 	f.BoolVar(&s.DryRun, "dry-run", false, "simulate a spray")
 	f.BoolVarP(&s.Verbose, "verbose", "v", false, "enable spray verbose output")
 	f.BoolVar(&s.Debug, "debug", false, "enable helm debug output (also include spray verbose output)")
+	f.StringVarP(&output, "output", "o", "", "print the resolved, weight-ordered deployment plan and exit without deploying. Supported format: 'json'")
 
 	// When called through helm, debug mode is transmitted through the HELM_DEBUG envvar
 	helmDebug := os.Getenv("HELM_DEBUG")

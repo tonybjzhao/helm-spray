@@ -117,3 +117,23 @@ func TestSprayInvalidTargetFailsFast(t *testing.T) {
 		t.Errorf("error should name the invalid target; got %v", err)
 	}
 }
+
+func TestPlanGroupsByWeight(t *testing.T) {
+	s := &Spray{ChartName: "testdata/umbrella", Namespace: "ns"}
+	plan, err := s.Plan()
+	if err != nil {
+		t.Fatalf("Plan returned error: %v", err)
+	}
+	if len(plan.Tiers) != 2 {
+		t.Fatalf("expected 2 weight tiers, got %d: %+v", len(plan.Tiers), plan.Tiers)
+	}
+	if plan.Tiers[0].Weight != 0 || plan.Tiers[1].Weight != 1 {
+		t.Errorf("tiers not in ascending weight order: %d then %d", plan.Tiers[0].Weight, plan.Tiers[1].Weight)
+	}
+	if len(plan.Tiers[0].Releases) != 1 || plan.Tiers[0].Releases[0].SubChart != "alpha" {
+		t.Errorf("weight-0 tier should contain only alpha, got %+v", plan.Tiers[0].Releases)
+	}
+	if len(plan.Tiers[1].Releases) != 2 {
+		t.Errorf("weight-1 tier should contain beta and gamma, got %+v", plan.Tiers[1].Releases)
+	}
+}
