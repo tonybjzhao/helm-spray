@@ -1,3 +1,6 @@
+// Package helmspray orchestrates the deployment of an umbrella chart's
+// sub-charts in ascending weight order, creating one Helm release per sub-chart
+// and gating workload readiness between tiers.
 package helmspray
 
 import (
@@ -379,7 +382,7 @@ func checkTargetsAndExcludes(deps []dependencies.Dependency, targets []string, e
 }
 
 func logRelease(releases map[string]helm.Release, deps []dependencies.Dependency) {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
+	w := tabwriter.NewWriter(os.Stderr, 0, 0, 1, ' ', tabwriter.Debug)
 	_, _ = fmt.Fprintln(w, "[spray]  \t subchart\t is alias of\t targeted\t weight\t| corresponding release\t revision\t status\t")
 	_, _ = fmt.Fprintln(w, "[spray]  \t --------\t -----------\t --------\t ------\t| ---------------------\t --------\t ------\t")
 

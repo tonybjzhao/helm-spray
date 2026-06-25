@@ -3,7 +3,12 @@ DIST := $(CURDIR)/_dist
 LDFLAGS := -X github.com/ThalesGroup/helm-spray/v4/cmd.version=$(VERSION)
 GOFLAGS := -trimpath
 
-.PHONY: dist dist_darwin dist_linux dist_windows package clean
+.PHONY: build dist dist_darwin dist_linux dist_windows package clean
+
+# build compiles a binary for the host platform into ./bin for local use.
+build:
+	mkdir -p bin
+	CGO_ENABLED=0 go build $(GOFLAGS) -o bin/helm-spray -ldflags "$(LDFLAGS)" .
 
 dist: dist_darwin dist_linux dist_windows
 

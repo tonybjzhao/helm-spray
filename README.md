@@ -46,10 +46,16 @@ workload readiness — see the [kubectl install guide](https://kubernetes.io/doc
 
 ### From source
 
+Build a binary for your platform and run it directly:
+
 ```console
-$ make dist_darwin   # or dist_linux / dist_windows
-$ helm plugin install .
+$ make build                       # builds ./bin/helm-spray for the host
+$ ./bin/helm-spray --output json ./my-umbrella-chart
 ```
+
+`make dist` cross-compiles release archives into `_dist/`. Note that
+`helm plugin install <url>` runs an install hook that downloads the released
+binary matching `plugin.yaml`'s version — it does not build from source.
 
 ## Quickstart
 

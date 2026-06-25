@@ -1,6 +1,6 @@
 # Release Notes
 
-## Unreleased
+## Version 4.1.0 - 06/25/2026
 
 Modernisation of helm-spray as a Helm v4 plugin.
 
