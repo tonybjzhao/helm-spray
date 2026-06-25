@@ -59,12 +59,22 @@ func Handler() (http.Handler, error) {
 		return nil, fmt.Errorf("preparing embedded web assets: %w", err)
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(sub)))
+	// Serve the embedded page with no-store: it is a live dashboard and must never
+	// be cached, so a reload always picks up the current build (no stale UI).
+	mux.Handle("/", noStore(http.FileServer(http.FS(sub))))
 	mux.HandleFunc("/api/plan", handlePlan)
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/version", handleVersion)
 	mux.HandleFunc("/api/config", handleConfig)
 	return mux, nil
+}
+
+// noStore wraps a handler so its responses are never cached by the browser.
+func noStore(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		h.ServeHTTP(w, r)
+	})
 }
 
 // Serve starts the web UI on addr and blocks until the server stops.

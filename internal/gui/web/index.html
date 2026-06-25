@@ -342,10 +342,10 @@
         else if (v.indexOf("deployed") >= 0) cls += " deployed";
       }
       return (
-        '<div class="' + cls + '" style="animation-delay:' + (i * 55) + 'ms">' +
+        '<div class="' + cls + '" data-release="' + esc(r.release) + '" style="animation-delay:' + (i * 55) + 'ms">' +
         '<div class="r-top"><div class="r-ico">◇</div><div><div class="r-name">' + esc(r.release) + "</div>" +
         '<div class="r-sub">' + esc(sub) + "</div></div></div>" +
-        '<div class="badges">' + tBadge + gBadge + sBadge + "</div></div>"
+        '<div class="badges">' + tBadge + gBadge + '<span class="s-slot">' + sBadge + "</span></div></div>"
       );
     }
 
@@ -404,6 +404,44 @@
 
     // Live status: poll /api/status (read-only) and colour the plan as releases
     // reach their helm status. The actual deploy is performed by the CLI.
+    // Track what structure is currently mounted so live polling can patch the
+    // status badges in place instead of re-rendering (and re-animating) the whole
+    // plan every cycle, which would flicker.
+    let rendered = null;
+    function planSig(plan) {
+      return (plan.chart || "") + "|" + (plan.namespace || "") + "|" +
+        (plan.tiers || []).map((t) => t.weight + ":" + (t.releases || []).map((r) => r.release).join(",")).join(";");
+    }
+    // applyStatuses updates only the status badge and deployed/failed class of each
+    // already-mounted card, so the live view refreshes without re-mounting the DOM.
+    function applyStatuses(statuses) {
+      document.querySelectorAll(".release[data-release]").forEach((el) => {
+        const name = el.getAttribute("data-release");
+        const slot = el.querySelector(".s-slot");
+        if (slot) slot.innerHTML = statusBadge(name, statuses);
+        el.classList.remove("deployed", "failed");
+        const st = statuses && statuses[name];
+        if (st && st.status) {
+          const v = String(st.status).toLowerCase();
+          if (v.indexOf("fail") >= 0) el.classList.add("failed");
+          else if (v.indexOf("deployed") >= 0) el.classList.add("deployed");
+        }
+      });
+    }
+    // showPlan mounts the plan once, then patches statuses on subsequent polls of
+    // the same structure — only re-rendering when the structure (or live/plan-only
+    // mode) actually changes.
+    function showPlan(plan, statuses) {
+      const sig = planSig(plan);
+      const wantStatus = !!statuses;
+      if (!rendered || rendered.sig !== sig || rendered.hasStatuses !== wantStatus) {
+        renderPlan(plan, false, statuses);
+        rendered = { sig: sig, hasStatuses: wantStatus };
+      } else if (wantStatus) {
+        applyStatuses(statuses);
+      }
+    }
+
     let liveTimer = null;
     async function pollLive() {
       const body = JSON.stringify(readForm());
@@ -411,7 +449,7 @@
         const resp = await fetch("/api/status", { method: "POST", headers: { "Content-Type": "application/json" }, body });
         if (resp.ok) {
           const data = await resp.json();
-          renderPlan(data.plan, false, data.releases || {});
+          showPlan(data.plan, data.releases || {});
           return;
         }
         // Live status needs the cluster. If it is unavailable but the chart is
@@ -419,7 +457,7 @@
         // and keep polling so it lights up once releases appear.
         const liveErr = (await resp.json()).error || ("request failed: " + resp.status);
         const planResp = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body });
-        if (planResp.ok) renderPlan(await planResp.json(), false);
+        if (planResp.ok) showPlan(await planResp.json(), null);
         else { renderHeroError(liveErr); stopLive(); }
       } catch (err) {
         renderHeroError(String(err)); stopLive();
@@ -427,6 +465,7 @@
     }
     function stopLive() {
       if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+      rendered = null;
       $("live").classList.remove("live");
       $("live-label").textContent = "Watch live status";
     }
