@@ -41,6 +41,16 @@ type planRequest struct {
 	PrefixReleasesWithNamespace bool     `json:"prefixReleasesWithNamespace"`
 }
 
+// Config is the initial UI configuration the command layer can pass so the page
+// opens pre-filled for a chart (and immediately shows its live status), instead
+// of the operator having to type the chart path and options by hand. It mirrors
+// the fields of an /api/plan request.
+type Config = planRequest
+
+// Defaults is the initial UI configuration, set by the command layer before Serve
+// and served to the page at GET /api/config.
+var Defaults Config
+
 // Handler returns the HTTP handler for the web UI: the embedded static assets
 // plus the JSON plan API. It is exported so it can be tested with httptest.
 func Handler() (http.Handler, error) {
@@ -53,6 +63,7 @@ func Handler() (http.Handler, error) {
 	mux.HandleFunc("/api/plan", handlePlan)
 	mux.HandleFunc("/api/status", handleStatus)
 	mux.HandleFunc("/api/version", handleVersion)
+	mux.HandleFunc("/api/config", handleConfig)
 	return mux, nil
 }
 
@@ -194,6 +205,13 @@ func handleVersion(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// handleConfig returns the initial UI configuration the CLI launched with, so the
+// page can pre-fill the form and show live status without manual entry.
+func handleConfig(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(Defaults)
 }
 
 func writeError(w http.ResponseWriter, code int, msg string) {

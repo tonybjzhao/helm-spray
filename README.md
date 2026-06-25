@@ -237,15 +237,23 @@ $ helm spray --output json ./my-umbrella-chart
 
 `helm spray ui` starts a local web application (served from the single plugin
 binary) for configuring a spray and visualising the umbrella chart as a
-weight-ordered deployment:
+weight-ordered deployment.
+
+The easiest way to use it is to pass the same chart (and namespace) you would
+deploy. The UI then opens **already configured** for it — nothing to type — and
+immediately shows the live status of its releases:
 
 ```console
-$ helm spray ui --address 127.0.0.1:8080
+$ helm spray ui ./my-umbrella-chart --namespace my-ns
 [spray] helm-spray UI listening on http://127.0.0.1:8080
 ```
 
-Open the address, enter an umbrella chart and options, and the UI renders the
-ordered weight tiers and the per-release targeting/tag status. The header shows
+Then deploy from a terminal with `helm spray ./my-umbrella-chart --namespace
+my-ns` and watch the tiers turn green. Run `helm spray ui` with no chart to open
+an empty form and fill it in by hand instead.
+
+The UI renders the ordered weight tiers and the per-release targeting/tag status.
+The header shows
 the helm-spray version and the **helm host version** it would drive, and a
 light/dark toggle is available.
 

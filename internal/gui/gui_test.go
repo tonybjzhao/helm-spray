@@ -129,6 +129,27 @@ func TestPlanAPIRejectsRemoteValueFile(t *testing.T) {
 	}
 }
 
+func TestConfigAPIReturnsDefaults(t *testing.T) {
+	Defaults = Config{Chart: "./demo", Namespace: "ns1", Targets: []string{"a"}}
+	defer func() { Defaults = Config{} }()
+	srv := newServer(t)
+	resp, err := http.Get(srv.URL + "/api/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var c map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
+		t.Fatal(err)
+	}
+	if c["chart"] != "./demo" || c["namespace"] != "ns1" {
+		t.Errorf("config = %v, want the launched chart/namespace", c)
+	}
+}
+
 func TestIsLoopback(t *testing.T) {
 	cases := map[string]bool{
 		"localhost": true, "127.0.0.1": true, "::1": true,

@@ -406,11 +406,21 @@
     // reach their helm status. The actual deploy is performed by the CLI.
     let liveTimer = null;
     async function pollLive() {
+      const body = JSON.stringify(readForm());
       try {
-        const resp = await fetch("/api/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(readForm()) });
-        const data = await resp.json();
-        if (!resp.ok) { renderHeroError(data.error || ("request failed: " + resp.status)); stopLive(); return; }
-        renderPlan(data.plan, false, data.releases || {});
+        const resp = await fetch("/api/status", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        if (resp.ok) {
+          const data = await resp.json();
+          renderPlan(data.plan, false, data.releases || {});
+          return;
+        }
+        // Live status needs the cluster. If it is unavailable but the chart is
+        // valid, fall back to the cluster-free plan so the structure still shows,
+        // and keep polling so it lights up once releases appear.
+        const liveErr = (await resp.json()).error || ("request failed: " + resp.status);
+        const planResp = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        if (planResp.ok) renderPlan(await planResp.json(), false);
+        else { renderHeroError(liveErr); stopLive(); }
       } catch (err) {
         renderHeroError(String(err)); stopLive();
       }
@@ -457,8 +467,26 @@
       }
     })();
 
-    // Show an illustrative example on first load so the canvas is never empty.
-    renderPlan(EXAMPLE, true);
+    // If the CLI launched the UI for a specific chart (helm spray ui ./chart),
+    // open pre-configured and begin showing live status; otherwise show an
+    // illustrative example so the canvas is never empty.
+    (async function init() {
+      try {
+        const cfg = await (await fetch("/api/config")).json();
+        if (cfg && cfg.chart) {
+          $("chart").value = cfg.chart;
+          $("namespace").value = cfg.namespace || "";
+          $("prefix").value = cfg.prefixReleases || "";
+          $("prefixNs").checked = !!cfg.prefixReleasesWithNamespace;
+          $("targets").value = (cfg.targets || []).join(", ");
+          $("excludes").value = (cfg.excludes || []).join(", ");
+          $("set").value = (cfg.set || []).join("\n");
+          startLive();
+          return;
+        }
+      } catch (e) { /* fall through to the example */ }
+      renderPlan(EXAMPLE, true);
+    })();
   </script>
 </body>
 </html>

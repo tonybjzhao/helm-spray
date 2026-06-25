@@ -87,6 +87,13 @@ func TestUnsupportedOutputFormat(t *testing.T) {
 	}
 }
 
+func TestUIRejectsMultipleCharts(t *testing.T) {
+	err := runCmd("ui", "chart-a", "chart-b")
+	if err == nil || !strings.Contains(err.Error(), "at most 1 argument") {
+		t.Fatalf("expected a too-many-arguments error, got %v", err)
+	}
+}
+
 func TestParseTimeout(t *testing.T) {
 	cases := []struct {
 		in      string

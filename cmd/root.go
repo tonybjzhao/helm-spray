@@ -352,17 +352,51 @@ prefix, and '--dry-run' to preview the removals.`,
 // newUICmd builds the "ui" sub-command, which starts the embedded web UI for
 // configuring and visualising a deployment.
 func newUICmd() *cobra.Command {
-	var address string
+	var (
+		address string
+		cfg     gui.Config
+	)
 	c := &cobra.Command{
-		Use:          "ui",
-		Short:        "start the helm-spray web UI to configure and visualise a deployment",
+		Use:   "ui [CHART]",
+		Short: "start the helm-spray web UI to configure and visualise a deployment",
+		Long: `Start the embedded web UI.
+
+If an umbrella CHART (a local path) is given, the UI opens already configured for
+it: the form is pre-filled and the live status of its releases is shown
+immediately, so there is nothing to type. Deploy from a terminal with
+"helm spray <chart>" and watch the tiers turn green.
+
+    helm spray ui ./my-umbrella-chart --namespace my-ns`,
 		SilenceUsage: true,
-		Args:         cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		Args:         cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return errors.New("this command accepts at most 1 argument: the umbrella chart path")
+			}
+			if len(args) == 1 {
+				cfg.Chart = args[0]
+			}
+			// Resolve the namespace with the same precedence as spray.
+			if !cmd.Flags().Changed("namespace") {
+				if ns := os.Getenv("HELM_NAMESPACE"); ns != "" {
+					cfg.Namespace = ns
+				} else {
+					cfg.Namespace = "default"
+				}
+			}
 			gui.Version = version
+			gui.Defaults = cfg
 			return gui.Serve(address)
 		},
 	}
-	c.Flags().StringVar(&address, "address", "127.0.0.1:8080", "address the web UI listens on")
+	f := c.Flags()
+	f.StringVar(&address, "address", "127.0.0.1:8080", "address the web UI listens on")
+	f.StringVarP(&cfg.Namespace, "namespace", "n", "", "namespace to pre-fill (overrides HELM_NAMESPACE; defaults to \"default\")")
+	f.StringSliceVarP(&cfg.Targets, "target", "t", nil, "sub-chart(s) to pre-fill as targets (repeatable)")
+	f.StringSliceVarP(&cfg.Excludes, "exclude", "x", nil, "sub-chart(s) to pre-fill as excludes (repeatable)")
+	f.StringArrayVar(&cfg.Set, "set", nil, "values to pre-fill (key=value, repeatable)")
+	f.StringSliceVarP(&cfg.ValueFiles, "values", "f", nil, "value file(s) to pre-fill (repeatable)")
+	f.StringVar(&cfg.PrefixReleases, "prefix-releases", "", "release-name prefix to pre-fill")
+	f.BoolVar(&cfg.PrefixReleasesWithNamespace, "prefix-releases-with-namespace", false, "pre-fill prefix-releases-with-namespace")
 	return c
 }
