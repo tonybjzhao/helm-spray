@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ThalesGroup/helm-spray/v4/pkg/helm"
+	"github.com/ThalesGroup/helm-spray/v5/pkg/helm"
 )
 
 // fakeHelm records the upgrades it is asked to perform and returns canned

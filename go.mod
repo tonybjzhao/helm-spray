@@ -1,4 +1,4 @@
-module github.com/ThalesGroup/helm-spray/v4
+module github.com/ThalesGroup/helm-spray/v5
 
 go 1.26.0
 

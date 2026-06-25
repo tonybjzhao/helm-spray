@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ThalesGroup/helm-spray/v4/internal/dependencies"
-	"github.com/ThalesGroup/helm-spray/v4/internal/log"
+	"github.com/ThalesGroup/helm-spray/v5/internal/dependencies"
+	"github.com/ThalesGroup/helm-spray/v5/internal/log"
 )
 
 // Uninstall removes the releases helm-spray created for the umbrella chart's

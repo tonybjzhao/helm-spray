@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/ThalesGroup/helm-spray/v4/internal/dependencies"
+	"github.com/ThalesGroup/helm-spray/v5/internal/dependencies"
 )
 
 // PlanRelease describes a single release in the deployment plan.

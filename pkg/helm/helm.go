@@ -30,7 +30,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ThalesGroup/helm-spray/v4/internal/log"
+	"github.com/ThalesGroup/helm-spray/v5/internal/log"
 )
 
 // UpgradedRelease holds the JSON result of "helm upgrade --install -o json".

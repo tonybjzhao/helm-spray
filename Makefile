@@ -1,6 +1,6 @@
 VERSION := $(shell sed -n -e 's/version:[ "]*\([^"]*\).*/\1/p' plugin.yaml)
 DIST := $(CURDIR)/_dist
-LDFLAGS := -X github.com/ThalesGroup/helm-spray/v4/cmd.version=$(VERSION)
+LDFLAGS := -X github.com/ThalesGroup/helm-spray/v5/cmd.version=$(VERSION)
 GOFLAGS := -trimpath
 
 .PHONY: build dist dist_darwin dist_linux dist_windows package clean

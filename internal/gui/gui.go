@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ThalesGroup/helm-spray/v4/internal/log"
-	"github.com/ThalesGroup/helm-spray/v4/pkg/helm"
-	"github.com/ThalesGroup/helm-spray/v4/pkg/helmspray"
+	"github.com/ThalesGroup/helm-spray/v5/internal/log"
+	"github.com/ThalesGroup/helm-spray/v5/pkg/helm"
+	"github.com/ThalesGroup/helm-spray/v5/pkg/helmspray"
 	cliValues "helm.sh/helm/v4/pkg/cli/values"
 )
 

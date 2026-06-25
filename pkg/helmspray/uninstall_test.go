@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ThalesGroup/helm-spray/v4/pkg/helm"
+	"github.com/ThalesGroup/helm-spray/v5/pkg/helm"
 )
 
 // umbrellaRelease builds a helm.Release as it would appear after a spray: its
