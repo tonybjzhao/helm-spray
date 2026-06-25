@@ -3,7 +3,7 @@ package helmspray
 import (
 	"sort"
 
-	"github.com/gemalto/helm-spray/v4/internal/dependencies"
+	"github.com/ThalesGroup/helm-spray/v4/internal/dependencies"
 )
 
 // PlanRelease describes a single release in the deployment plan.

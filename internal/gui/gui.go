@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gemalto/helm-spray/v4/internal/log"
-	"github.com/gemalto/helm-spray/v4/pkg/helmspray"
+	"github.com/ThalesGroup/helm-spray/v4/internal/log"
+	"github.com/ThalesGroup/helm-spray/v4/pkg/helmspray"
 	cliValues "helm.sh/helm/v4/pkg/cli/values"
 )
 

@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/gemalto/helm-spray/v4/cmd"
+	"github.com/ThalesGroup/helm-spray/v4/cmd"
 )
 
 func main() {

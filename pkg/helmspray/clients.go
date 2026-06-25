@@ -3,8 +3,8 @@ package helmspray
 import (
 	"context"
 
-	"github.com/gemalto/helm-spray/v4/pkg/helm"
-	"github.com/gemalto/helm-spray/v4/pkg/kubectl"
+	"github.com/ThalesGroup/helm-spray/v4/pkg/helm"
+	"github.com/ThalesGroup/helm-spray/v4/pkg/kubectl"
 )
 
 // HelmClient performs the helm operations the orchestrator needs. It is an

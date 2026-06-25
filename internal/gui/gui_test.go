@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gemalto/helm-spray/v4/pkg/helmspray"
+	"github.com/ThalesGroup/helm-spray/v4/pkg/helmspray"
 )
 
 func newServer(t *testing.T) *httptest.Server {

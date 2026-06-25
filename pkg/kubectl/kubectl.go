@@ -25,7 +25,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/gemalto/helm-spray/v4/internal/log"
+	"github.com/ThalesGroup/helm-spray/v4/internal/log"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
