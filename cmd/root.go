@@ -15,6 +15,7 @@ limitations under the License.
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -106,16 +107,8 @@ func NewRootCmd() *cobra.Command {
 			}
 
 			s.ChartName = args[0]
-
-			// Resolve the namespace: an explicit --namespace flag wins; otherwise
-			// HELM_NAMESPACE (set by helm for plugins); otherwise "default".
-			if !cmd.Flags().Changed("namespace") {
-				if ns := os.Getenv("HELM_NAMESPACE"); ns != "" {
-					s.Namespace = ns
-				} else {
-					s.Namespace = "default"
-				}
-			}
+			resolveNamespace(cmd, s)
+			applyHelmDebug(s)
 
 			if s.ChartVersion != "" {
 				if strings.HasSuffix(s.ChartName, "tgz") {
@@ -153,35 +146,11 @@ func NewRootCmd() *cobra.Command {
 
 			// Fetch the chart when it is a remote reference or not present locally.
 			// The cleanup must outlive the spray, so it is deferred here in RunE.
-			fetchChart := func(source string) (func(), error) {
-				if s.ChartVersion != "" {
-					log.Info(1, "fetching chart \"%s\" %s with version \"%s\"...", s.ChartName, source, s.ChartVersion)
-				} else {
-					log.Info(1, "fetching chart \"%s\" %s...", s.ChartName, source)
-				}
-				name, cleanup, ferr := helm.Fetch(cmd.Context(), s.ChartName, s.ChartVersion)
-				if ferr != nil {
-					return nil, fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, ferr)
-				}
-				s.ChartName = name
-				return cleanup, nil
+			cleanup, err := prepareChartSource(cmd.Context(), s)
+			if err != nil {
+				return err
 			}
-
-			if strings.HasPrefix(s.ChartName, "http://") || strings.HasPrefix(s.ChartName, "https://") || strings.HasPrefix(s.ChartName, "oci://") {
-				cleanup, err := fetchChart("from its URL")
-				if err != nil {
-					return err
-				}
-				defer cleanup()
-			} else if _, statErr := os.Stat(s.ChartName); statErr != nil {
-				cleanup, err := fetchChart("from the configured repositories")
-				if err != nil {
-					return err
-				}
-				defer cleanup()
-			} else {
-				log.Info(1, "processing chart from local file or directory \"%s\"...", s.ChartName)
-			}
+			defer cleanup()
 
 			if output == "json" {
 				plan, err := s.Plan()
@@ -215,13 +184,36 @@ func NewRootCmd() *cobra.Command {
 	f.StringArrayVar(&s.ValuesOpts.StringValues, "set-string", []string{}, "set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	f.StringArrayVar(&s.ValuesOpts.FileValues, "set-file", []string{}, "set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	f.BoolVar(&s.Force, "force", false, "force resource update through delete/recreate if needed")
+	f.BoolVar(&s.Prune, "prune", false, "after deploying, uninstall releases for sub-charts that are no longer part of the umbrella chart")
 	f.IntVar(&s.Timeout, "timeout", 300, "time in seconds to wait for any individual Kubernetes operation (like Jobs for hooks)\nand for liveness and readiness (like Deployments and regular Jobs completion)")
 	f.BoolVar(&s.DryRun, "dry-run", false, "simulate a spray")
 	f.BoolVarP(&s.Verbose, "verbose", "v", false, "enable spray verbose output")
 	f.BoolVar(&s.Debug, "debug", false, "enable helm debug output (also include spray verbose output)")
 	f.StringVarP(&output, "output", "o", "", "print the resolved, weight-ordered deployment plan and exit without deploying. Supported format: 'json'")
 
-	// When called through helm, debug mode is transmitted through the HELM_DEBUG envvar
+	cmd.AddCommand(newUICmd())
+	cmd.AddCommand(newUninstallCmd())
+
+	return cmd
+}
+
+// resolveNamespace resolves the target namespace: an explicit --namespace flag
+// wins; otherwise HELM_NAMESPACE (exported by helm for its plugins); otherwise
+// "default".
+func resolveNamespace(cmd *cobra.Command, s *helmspray.Spray) {
+	if !cmd.Flags().Changed("namespace") {
+		if ns := os.Getenv("HELM_NAMESPACE"); ns != "" {
+			s.Namespace = ns
+		} else {
+			s.Namespace = "default"
+		}
+	}
+}
+
+// applyHelmDebug enables debug output (and, with it, verbose output) when helm
+// signals it through the HELM_DEBUG environment variable or when --debug was
+// passed on the command line.
+func applyHelmDebug(s *helmspray.Spray) {
 	helmDebug := os.Getenv("HELM_DEBUG")
 	if helmDebug == "1" || strings.EqualFold(helmDebug, "true") || strings.EqualFold(helmDebug, "on") {
 		s.Debug = true
@@ -229,10 +221,100 @@ func NewRootCmd() *cobra.Command {
 	if s.Debug {
 		s.Verbose = true
 	}
+}
 
-	cmd.AddCommand(newUICmd())
+// prepareChartSource ensures s.ChartName points at a chart that can be loaded
+// locally, fetching remote references (HTTP(S) URL, OCI reference, or repository
+// reference) into a temporary directory. It returns a cleanup function the caller
+// must defer; for a chart that is already local the cleanup is a no-op.
+func prepareChartSource(ctx context.Context, s *helmspray.Spray) (func(), error) {
+	fetch := func(source string) (func(), error) {
+		if s.ChartVersion != "" {
+			log.Info(1, "fetching chart \"%s\" %s with version \"%s\"...", s.ChartName, source, s.ChartVersion)
+		} else {
+			log.Info(1, "fetching chart \"%s\" %s...", s.ChartName, source)
+		}
+		name, cleanup, ferr := helm.Fetch(ctx, s.ChartName, s.ChartVersion)
+		if ferr != nil {
+			return nil, fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, ferr)
+		}
+		s.ChartName = name
+		return cleanup, nil
+	}
 
-	return cmd
+	switch {
+	case strings.HasPrefix(s.ChartName, "http://"),
+		strings.HasPrefix(s.ChartName, "https://"),
+		strings.HasPrefix(s.ChartName, "oci://"):
+		return fetch("from its URL")
+	default:
+		if _, statErr := os.Stat(s.ChartName); statErr != nil {
+			return fetch("from the configured repositories")
+		}
+	}
+	log.Info(1, "processing chart from local file or directory \"%s\"...", s.ChartName)
+	return func() {}, nil
+}
+
+// newUninstallCmd builds the "uninstall" sub-command, which removes the releases
+// helm-spray created for an umbrella chart's sub-charts, in reverse weight order.
+func newUninstallCmd() *cobra.Command {
+	s := &helmspray.Spray{}
+	c := &cobra.Command{
+		Use:   "uninstall [CHART]",
+		Short: "uninstall the releases created for an umbrella chart's sub-charts",
+		Long: `This command uninstalls the releases that "helm spray" created for an umbrella
+chart's sub-charts. Releases are removed in descending weight order, the reverse
+of deployment.
+
+The chart argument is the same umbrella chart (path, reference, or URL) used to
+deploy, so helm-spray can compute the set of release names to remove. Use
+'--target'/'--exclude' to uninstall a subset, '--prefix-releases'/
+'--prefix-releases-with-namespace' to match releases that were deployed with a
+prefix, and '--dry-run' to preview the removals.`,
+		SilenceUsage: true,
+		Args:         cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return errors.New("this command needs at least 1 argument: chart name")
+			} else if len(args) > 1 {
+				return errors.New("this command accepts only 1 argument: chart name")
+			}
+			s.ChartName = args[0]
+			resolveNamespace(cmd, s)
+			applyHelmDebug(s)
+
+			if len(s.Targets) > 0 && len(s.Excludes) > 0 {
+				return errors.New("cannot use both --target and --exclude together")
+			}
+			if s.PrefixReleasesWithNamespace && s.PrefixReleases != "" {
+				return errors.New("cannot use both --prefix-releases and --prefix-releases-with-namespace together")
+			}
+			if s.PrefixReleases != "" && !releasePrefixPattern.MatchString(s.PrefixReleases) {
+				return errors.New("invalid --prefix-releases value: allowed characters are a-z, A-Z, 0-9 and -")
+			}
+
+			cleanup, err := prepareChartSource(cmd.Context(), s)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+
+			return s.Uninstall(cmd.Context())
+		},
+	}
+
+	f := c.Flags()
+	f.StringVarP(&s.Namespace, "namespace", "n", "", "namespace the releases live in (overrides the HELM_NAMESPACE environment variable; defaults to \"default\")")
+	f.StringVarP(&s.ChartVersion, "version", "", "", "chart version to resolve the sub-chart set from (for remote chart references)")
+	f.StringSliceVarP(&s.Targets, "target", "t", []string{}, "only uninstall the specified subchart(s) (can specify multiple)")
+	f.StringSliceVarP(&s.Excludes, "exclude", "x", []string{}, "uninstall all subcharts except the specified one(s) (can specify multiple)")
+	f.StringVarP(&s.PrefixReleases, "prefix-releases", "", "", "release-name prefix used at deploy time, needed to locate the releases")
+	f.BoolVar(&s.PrefixReleasesWithNamespace, "prefix-releases-with-namespace", false, "the releases were prefixed with the namespace name at deploy time")
+	f.BoolVar(&s.DryRun, "dry-run", false, "show which releases would be uninstalled without removing them")
+	f.BoolVarP(&s.Verbose, "verbose", "v", false, "enable verbose output")
+	f.BoolVar(&s.Debug, "debug", false, "enable helm debug output (also includes spray verbose output)")
+	return c
 }
 
 // newUICmd builds the "ui" sub-command, which starts the embedded web UI for

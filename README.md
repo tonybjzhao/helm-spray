@@ -70,6 +70,9 @@ $ helm spray ./my-umbrella-chart
 # Re-deploy a single sub-chart:
 $ helm spray --target my-service ./my-umbrella-chart
 
+# Remove every release the solution created (reverse weight order):
+$ helm spray uninstall ./my-umbrella-chart
+
 # Explore and visualise a chart in the browser:
 $ helm spray ui
 ```
@@ -226,6 +229,41 @@ $ helm spray ui --address 127.0.0.1:8080
 Open the address, enter an umbrella chart and options, and the UI renders the
 ordered weight tiers and the per-release targeting/tag status.
 
+## Uninstall and prune
+
+`helm spray uninstall` removes the releases a spray created, in **descending
+weight order** (the reverse of deployment), so higher tiers are torn down before
+the lower tiers they depend on:
+
+```console
+# Remove the whole solution:
+$ helm spray uninstall ./my-umbrella-chart
+
+# Remove a single sub-chart's release:
+$ helm spray uninstall --target my-service ./my-umbrella-chart
+
+# Preview what would be removed:
+$ helm spray uninstall --dry-run ./my-umbrella-chart
+```
+
+Pass the same umbrella chart and `--prefix-releases`/
+`--prefix-releases-with-namespace` you deployed with, so helm-spray can compute
+the release names. Releases that are not currently deployed are skipped, so
+uninstall is idempotent.
+
+When a sub-chart is **removed** from an umbrella, its old release lingers in the
+cluster. Add `--prune` to a deploy to reconcile that: after the spray completes,
+helm-spray uninstalls any release that was created from this umbrella chart but
+is no longer one of its sub-charts.
+
+```console
+$ helm spray --prune ./my-umbrella-chart
+```
+
+Prune only ever touches releases produced from the same umbrella chart, and
+honours `--prefix-releases`, so independent solutions sharing a namespace never
+interfere with one another.
+
 ## Flags
 
 ```
@@ -238,6 +276,7 @@ ordered weight tiers and the per-release targeting/tag status.
   -o, --output string                    print the weight-ordered plan and exit (format: json)
       --prefix-releases string           prefix releases with "<prefix>-" (chars: a-z A-Z 0-9 -)
       --prefix-releases-with-namespace   prefix releases with "<namespace>-"
+      --prune                            after deploying, uninstall releases for sub-charts no longer in the umbrella
       --reset-values                     reset values to the chart defaults on upgrade
       --reuse-values                     reuse the last release's values (cannot be combined with --reset-values)
       --set strings                      set values (key1=val1,key2=val2)

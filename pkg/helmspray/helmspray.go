@@ -55,6 +55,7 @@ type Spray struct {
 	ReuseValues                 bool
 	ValuesOpts                  cliValues.Options
 	Force                       bool
+	Prune                       bool
 	Timeout                     int
 	DryRun                      bool
 	Verbose                     bool
@@ -89,7 +90,7 @@ func (s *Spray) Spray(ctx context.Context) error {
 	}
 	startTime := time.Now()
 
-	updatedChartValuesAsString, deps, releasePrefix, err := s.resolve()
+	updatedChartValuesAsString, deps, releasePrefix, umbrellaName, err := s.resolve()
 	if err != nil {
 		return err
 	}
@@ -151,6 +152,12 @@ func (s *Spray) Spray(ctx context.Context) error {
 		}
 	}
 
+	if s.Prune {
+		if err := s.prune(ctx, deps, umbrellaName, releasePrefix); err != nil {
+			return err
+		}
+	}
+
 	log.Info(1, "upgrade of solution chart \"%s\" completed in %s", s.ChartName, util.Duration(time.Since(startTime)))
 	return nil
 }
@@ -161,14 +168,15 @@ func (s *Spray) Spray(ctx context.Context) error {
 // Spray and Plan. It returns the processed default-values document (when the
 // "#! .Files.Get" includes produced one), the dependencies, and the release
 // name prefix.
-func (s *Spray) resolve() (updatedChartValues string, deps []dependencies.Dependency, releasePrefix string, err error) {
+func (s *Spray) resolve() (updatedChartValues string, deps []dependencies.Dependency, releasePrefix string, umbrellaName string, err error) {
 	chart, err := loader.Load(s.ChartName)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("loading chart \"%s\": %w", s.ChartName, err)
+		return "", nil, "", "", fmt.Errorf("loading chart \"%s\": %w", s.ChartName, err)
 	}
+	umbrellaName = chart.Name()
 	mergedValues, updatedChartValues, err := values.Merge(chart, s.ReuseValues, &s.ValuesOpts, s.Verbose)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("merging values: %w", err)
+		return "", nil, "", "", fmt.Errorf("merging values: %w", err)
 	}
 	if s.PrefixReleasesWithNamespace && len(s.Namespace) > 0 {
 		releasePrefix = s.Namespace + "-"
@@ -177,12 +185,12 @@ func (s *Spray) resolve() (updatedChartValues string, deps []dependencies.Depend
 	}
 	deps, err = dependencies.Get(chart, &mergedValues, s.Targets, s.Excludes, releasePrefix, s.Verbose)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("analyzing dependencies: %w", err)
+		return "", nil, "", "", fmt.Errorf("analyzing dependencies: %w", err)
 	}
 	if err = checkTargetsAndExcludes(deps, s.Targets, s.Excludes); err != nil {
-		return "", nil, "", fmt.Errorf("checking targets and excludes: %w", err)
+		return "", nil, "", "", fmt.Errorf("checking targets and excludes: %w", err)
 	}
-	return updatedChartValues, deps, releasePrefix, nil
+	return updatedChartValues, deps, releasePrefix, umbrellaName, nil
 }
 
 // upgrade installs or upgrades every targeted, tag-allowed sub-chart at the given

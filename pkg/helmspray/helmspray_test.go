@@ -12,13 +12,23 @@ import (
 // fakeHelm records the upgrades it is asked to perform and returns canned
 // manifests, so the orchestration can be exercised without a real helm binary.
 type fakeHelm struct {
-	upgrades  []helm.UpgradeRequest
-	manifests map[string]string
-	status    string // helm release status to report (defaults to "deployed")
+	upgrades   []helm.UpgradeRequest
+	manifests  map[string]string
+	status     string                  // helm release status to report (defaults to "deployed")
+	releases   map[string]helm.Release // releases reported by List (defaults to none)
+	uninstalls []string                // release names passed to Uninstall, in order
 }
 
 func (f *fakeHelm) List(_ context.Context, _ string, _ bool) (map[string]helm.Release, error) {
+	if f.releases != nil {
+		return f.releases, nil
+	}
 	return map[string]helm.Release{}, nil
+}
+
+func (f *fakeHelm) Uninstall(_ context.Context, _, releaseName string, _, _ bool) error {
+	f.uninstalls = append(f.uninstalls, releaseName)
+	return nil
 }
 
 func (f *fakeHelm) Upgrade(_ context.Context, req helm.UpgradeRequest) (helm.UpgradedRelease, error) {

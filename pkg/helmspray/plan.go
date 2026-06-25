@@ -36,7 +36,7 @@ type Plan struct {
 // Plan resolves the umbrella chart and returns the ordered deployment plan
 // without contacting the cluster.
 func (s *Spray) Plan() (*Plan, error) {
-	_, deps, _, err := s.resolve()
+	_, deps, _, _, err := s.resolve()
 	if err != nil {
 		return nil, err
 	}

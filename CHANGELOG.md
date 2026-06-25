@@ -24,8 +24,16 @@ Modernisation of helm-spray as a Helm v4 plugin.
   contacting the cluster.
 * Added a `helm spray ui` embedded web interface to configure and visualise a
   deployment.
+* Added a `helm spray uninstall [CHART]` command that removes the releases
+  created for an umbrella chart's sub-charts in reverse weight order, and a
+  `--prune` flag that, after deploying, uninstalls releases for sub-charts that
+  are no longer part of the umbrella chart.
+* Hardened the release supply chain: per-release `SHA256SUMS`, keyless cosign
+  signatures, an SPDX SBOM, and build-provenance attestation; the install script
+  now verifies the download against the published checksum.
 * Rewrote the README; added SECURITY and Code of Conduct documents, issue/PR
-  templates, and a CI workflow (build, vet, test, gosec, govulncheck).
+  templates, and a CI workflow (build, vet, test, gosec, govulncheck, plus an
+  end-to-end job that runs the integration suite against a kind cluster).
 
 ## Version 4.0.13 - 11/27/2024
 * Bump to helm v3.16.3, k8s.io/api v0.31.3, go 1.22, and k8s.io/client-go v0.31.3

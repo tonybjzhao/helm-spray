@@ -206,6 +206,30 @@ func UpgradeWithValues(ctx context.Context, req UpgradeRequest) (UpgradedRelease
 	return upgradedRelease, nil
 }
 
+// Uninstall removes a single helm release from the namespace. Callers are
+// expected to confirm the release exists first (helm-spray lists releases before
+// tearing them down), so a "release not found" error is surfaced rather than
+// swallowed. When dryRun is set, helm reports what it would remove without
+// deleting anything.
+func Uninstall(ctx context.Context, namespace, releaseName string, dryRun, debug bool) error {
+	args := []string{"uninstall", releaseName, "--namespace", namespace}
+	if dryRun {
+		args = append(args, "--dry-run")
+	}
+
+	if debug {
+		log.Info(listLogLevel, "running helm command : %v", args)
+	}
+	output, err := run(ctx, args)
+	if debug {
+		log.Info(listLogLevel, "helm command returned:\n%s", string(output))
+	}
+	if err != nil {
+		return fmt.Errorf("running helm uninstall for release %q: %w", releaseName, err)
+	}
+	return nil
+}
+
 // Fetch downloads the named chart (optionally at a specific version) into a
 // freshly created temporary directory and returns the path to the fetched chart
 // archive together with a cleanup function the caller must invoke once the chart

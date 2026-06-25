@@ -13,6 +13,7 @@ import (
 type HelmClient interface {
 	List(ctx context.Context, namespace string, debug bool) (map[string]helm.Release, error)
 	Upgrade(ctx context.Context, req helm.UpgradeRequest) (helm.UpgradedRelease, error)
+	Uninstall(ctx context.Context, namespace, releaseName string, dryRun, debug bool) error
 }
 
 // ReadinessChecker reports whether the workloads created by a release have
@@ -34,6 +35,10 @@ func (execHelmClient) List(ctx context.Context, namespace string, debug bool) (m
 
 func (execHelmClient) Upgrade(ctx context.Context, req helm.UpgradeRequest) (helm.UpgradedRelease, error) {
 	return helm.UpgradeWithValues(ctx, req)
+}
+
+func (execHelmClient) Uninstall(ctx context.Context, namespace, releaseName string, dryRun, debug bool) error {
+	return helm.Uninstall(ctx, namespace, releaseName, dryRun, debug)
 }
 
 // execReadinessChecker is the default ReadinessChecker, backed by the kubectl
