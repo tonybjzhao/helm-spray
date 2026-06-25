@@ -16,11 +16,16 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"os"
+	"regexp"
 	"strconv"
-	"strings"
 	"text/tabwriter"
 	"time"
 )
+
+// documentSeparator matches a YAML document boundary: a line consisting solely
+// of "---". Splitting on the bare substring "---" would corrupt resources whose
+// content legitimately contains that sequence.
+var documentSeparator = regexp.MustCompile("(?m)^---$")
 
 type Spray struct {
 	ChartName                   string
@@ -98,9 +103,15 @@ func (s *Spray) Spray() error {
 		return fmt.Errorf("analyzing dependencies: %w", err)
 	}
 
+	// Validate the targets/excludes before any side effects (banner, release
+	// listing, logging) so an invalid name fails fast and without noise.
+	if err = checkTargetsAndExcludes(deps, s.Targets, s.Excludes); err != nil {
+		return fmt.Errorf("checking targets and excludes: %w", err)
+	}
+
 	// Starting the processing...
 	if len(releasePrefix) > 0 {
-		log.Info(1, "deploying solution chart \"%s\" in namespace \"%s\", with releases releasePrefix \"%s-\"", s.ChartName, s.Namespace, releasePrefix)
+		log.Info(1, "deploying solution chart \"%s\" in namespace \"%s\", with release prefix \"%s\"", s.ChartName, s.Namespace, releasePrefix)
 	} else {
 		log.Info(1, "deploying solution chart \"%s\" in namespace \"%s\"", s.ChartName, s.Namespace)
 	}
@@ -112,11 +123,6 @@ func (s *Spray) Spray() error {
 
 	if s.Verbose {
 		logRelease(releases, deps)
-	}
-
-	err = checkTargetsAndExcludes(deps, s.Targets, s.Excludes)
-	if err != nil {
-		return fmt.Errorf("checking targets and excludes: %w", err)
 	}
 
 	// Loop on the increasing weight
@@ -208,7 +214,7 @@ func (s *Spray) upgrade(releases map[string]helm.Release, deps []dependencies.De
 				}
 
 				ignoredParts := make([]string, 0)
-				for _, yaml := range strings.Split(upgradedRelease.Manifest, "---") {
+				for _, yaml := range documentSeparator.Split(upgradedRelease.Manifest, -1) {
 					manifest, _, err := scheme.Codecs.UniversalDeserializer().Decode([]byte(yaml), nil, nil)
 					if err != nil && len(yaml) > 0 {
 						ignoredParts = append(ignoredParts, yaml)

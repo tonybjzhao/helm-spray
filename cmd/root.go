@@ -3,7 +3,9 @@
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-    http://www.apache.org/licenses/LICENSE-2.0
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,6 +21,7 @@ import (
 	"github.com/gemalto/helm-spray/v4/pkg/helm"
 	"github.com/gemalto/helm-spray/v4/pkg/helmspray"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -70,6 +73,11 @@ charts in a repository, use 'helm search'.
 
 var version = "SNAPSHOT"
 
+// releasePrefixPattern enforces the documented character set for
+// --prefix-releases (a-z, A-Z, 0-9 and -), so an invalid prefix is rejected
+// up front rather than surfacing later as an opaque helm release-name error.
+var releasePrefixPattern = regexp.MustCompile("^[a-zA-Z0-9-]+$")
+
 func NewRootCmd() *cobra.Command {
 
 	s := &helmspray.Spray{}
@@ -107,8 +115,16 @@ func NewRootCmd() *cobra.Command {
 				return errors.New("cannot use both --prefix-releases and --prefix-releases-with-namespace together")
 			}
 
+			if s.PrefixReleases != "" && !releasePrefixPattern.MatchString(s.PrefixReleases) {
+				return errors.New("invalid --prefix-releases value: allowed characters are a-z, A-Z, 0-9 and -")
+			}
+
 			if len(s.Targets) > 0 && len(s.Excludes) > 0 {
 				return errors.New("cannot use both --target and --exclude together")
+			}
+
+			if s.ResetValues && s.ReuseValues {
+				return errors.New("cannot use both --reset-values and --reuse-values together")
 			}
 
 			// If chart is specified through an URL, then fetch it from the URL.
