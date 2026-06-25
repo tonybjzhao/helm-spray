@@ -14,4 +14,4 @@ Fixes #
 - [ ] Code is `gofmt`-ed
 - [ ] New behaviour is covered by tests
 - [ ] Documentation (README / flags / godoc) updated where relevant
-- [ ] No third-party tool names introduced in code, docs, or commit messages
+- [ ] No competing deployment tools referenced by name in code, docs, or commit messages

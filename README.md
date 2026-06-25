@@ -232,7 +232,7 @@ ordered weight tiers and the per-release targeting/tag status.
       --prefix-releases string           prefix releases with "<prefix>-" (chars: a-z A-Z 0-9 -)
       --prefix-releases-with-namespace   prefix releases with "<namespace>-"
       --reset-values                     reset values to the chart defaults on upgrade
-      --reuse-values                     reuse the last release's values (ignored with --reset-values)
+      --reuse-values                     reuse the last release's values (cannot be combined with --reset-values)
       --set strings                      set values (key1=val1,key2=val2)
       --set-file strings                 set values from files (key=path)
       --set-string strings               set STRING values (key1=val1,key2=val2)
@@ -252,9 +252,10 @@ $ go test -tags integration ./pkg/helmspray/...   # live cluster integration tes
 $ make dist                                        # cross-platform release archives
 ```
 
-A complete, runnable reference deployment — a fictional air-traffic-control
-platform with nine weight-ordered services — is available as a companion project
-and makes a good end-to-end exercise for Helm Spray.
+A good end-to-end exercise is to build a small umbrella chart of weighted
+micro-services — for example a layered system with a datastore and message bus at
+weight 0, data services at weight 1, domain logic at weight 2, and an
+operator-facing edge at weight 3 — and deploy it with `helm spray`.
 
 ## Contributing
 
