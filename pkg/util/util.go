@@ -1,3 +1,4 @@
+// Package util holds small helpers shared across helm-spray.
 package util
 
 import (
@@ -5,6 +6,9 @@ import (
 	"time"
 )
 
+// Duration formats a duration for human-readable output, truncated to whole
+// seconds, dropping a trailing zero-second or zero-minute component (e.g. a
+// one-hour duration renders as "1h" rather than "1h0m0s").
 func Duration(d time.Duration) string {
 	d = d.Truncate(time.Second)
 	s := d.String()
