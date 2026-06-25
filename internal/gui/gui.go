@@ -90,6 +90,10 @@ func handlePlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "a chart is required")
 		return
 	}
+	if len(req.Targets) > 0 && len(req.Excludes) > 0 {
+		writeError(w, http.StatusBadRequest, "cannot use both targets and excludes together")
+		return
+	}
 
 	namespace := req.Namespace
 	if namespace == "" {

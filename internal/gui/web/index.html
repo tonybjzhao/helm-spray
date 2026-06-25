@@ -6,176 +6,305 @@
   <title>helm-spray</title>
   <style>
     :root {
-      --bg: #0f172a;
-      --panel: #1e293b;
-      --panel-2: #273449;
-      --border: #334155;
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --accent-2: #22d3ee;
-      --ok: #34d399;
-      --warn: #fbbf24;
-      --dim: #64748b;
-      --radius: 10px;
+      /* Thales-inspired palette: deep navy + electric azure */
+      --bg-0: #060d1b;
+      --bg-1: #0a1730;
+      --bg-2: #0f1f3d;
+      --surface: rgba(18, 33, 60, 0.62);
+      --surface-solid: #122038;
+      --border: rgba(125, 160, 210, 0.16);
+      --border-strong: rgba(125, 170, 230, 0.34);
+      --text: #eaf2fd;
+      --muted: #93a8c8;
+      --faint: #6d82a4;
+      --faint2: #56688a;
+      --accent: #18a8e8;
+      --accent-2: #46d3ff;
+      --accent-soft: rgba(24, 168, 232, 0.14);
+      --ok: #34d6a6;
+      --warn: #f2b44c;
+      --radius: 14px;
+      --radius-sm: 10px;
+      --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.7);
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
       color: var(--text);
+      background:
+        radial-gradient(1100px 600px at 78% -8%, rgba(24, 168, 232, 0.16), transparent 60%),
+        radial-gradient(900px 520px at 8% 108%, rgba(70, 211, 255, 0.08), transparent 55%),
+        linear-gradient(160deg, var(--bg-1) 0%, var(--bg-0) 60%, #03060f 100%);
+      background-color: var(--bg-0);
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: 0.1px;
     }
-    header {
-      display: flex; align-items: baseline; gap: 12px;
-      padding: 18px 24px; border-bottom: 1px solid var(--border);
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    a { color: var(--accent-2); }
+
+    header.topbar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 20px 30px;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
     }
-    header h1 { font-size: 20px; margin: 0; letter-spacing: .3px; }
-    header .tag { color: var(--accent); font-weight: 700; }
-    header .sub { color: var(--muted); font-size: 13px; }
-    main { display: grid; grid-template-columns: 340px 1fr; min-height: calc(100vh - 61px); }
-    .config { padding: 20px; border-right: 1px solid var(--border); background: var(--panel); }
-    .config h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 14px; }
-    .field { margin-bottom: 14px; }
-    .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo .mark {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(150deg, var(--accent-2), var(--accent) 55%, #0e6fb0);
+      box-shadow: 0 6px 20px -6px rgba(24, 168, 232, 0.7), inset 0 1px 0 rgba(255,255,255,0.35);
+      position: relative; flex: none;
+    }
+    .logo .mark::before, .logo .mark::after {
+      content: ""; position: absolute; inset: 0; border-radius: 9px;
+      border: 1.5px solid rgba(255,255,255,0.5); margin: 8px;
+    }
+    .logo .mark::after { margin: 12.5px; opacity: 0.7; }
+    .logo h1 {
+      margin: 0; font-size: 19px; font-weight: 650; letter-spacing: 0.2px;
+    }
+    .logo h1 b { color: var(--accent-2); font-weight: 650; }
+    .topbar .tagline { color: var(--muted); font-size: 13px; border-left: 1px solid var(--border); padding-left: 14px; }
+    .topbar .spacer { flex: 1; }
+    .topbar .pill {
+      font-size: 12px; color: var(--muted); border: 1px solid var(--border);
+      padding: 5px 12px; border-radius: 999px; display: flex; align-items: center; gap: 7px;
+    }
+    .topbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+
+    main { display: grid; grid-template-columns: 360px 1fr; gap: 26px; padding: 26px 30px 40px; align-items: start; }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+    .config { padding: 22px; position: sticky; top: 26px; }
+    .config h2 { margin: 0 0 18px; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+    .field { margin-bottom: 15px; }
+    .field > label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.2px; }
     .field input, .field textarea {
-      width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--border);
-      background: var(--panel-2); color: var(--text); font-size: 13px; font-family: inherit;
+      width: 100%; padding: 11px 12px; font-size: 13.5px; font-family: inherit;
+      color: var(--text); background: rgba(8, 16, 32, 0.6);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease), background 0.18s var(--ease);
     }
-    .field textarea { resize: vertical; min-height: 58px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .field .hint { font-size: 11px; color: var(--dim); margin-top: 4px; }
-    .row { display: flex; gap: 10px; }
-    .row .field { flex: 1; }
-    .checkbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
-    .checkbox input { width: auto; }
-    button.primary {
-      width: 100%; padding: 11px; border: none; border-radius: 8px; cursor: pointer;
-      background: linear-gradient(90deg, var(--accent), var(--accent-2)); color: #00121b; font-weight: 700; font-size: 14px;
+    .field input::placeholder, .field textarea::placeholder { color: var(--faint2); }
+    .field input:focus, .field textarea:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft); background: rgba(8, 16, 32, 0.85);
     }
-    button.primary:disabled { opacity: .6; cursor: progress; }
-    .canvas { padding: 24px; overflow: auto; }
-    .empty { color: var(--muted); text-align: center; margin-top: 80px; font-size: 14px; }
-    .err { background: #4c1d24; border: 1px solid #7f1d1d; color: #fecaca; padding: 12px 14px; border-radius: 8px; white-space: pre-wrap; font-size: 13px; }
-    .plan-head { display: flex; gap: 16px; align-items: baseline; margin-bottom: 18px; flex-wrap: wrap; }
-    .plan-head .name { font-size: 16px; font-weight: 700; }
-    .plan-head .meta { color: var(--muted); font-size: 13px; }
-    .tier { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); margin-bottom: 0; }
-    .tier-label { padding: 8px 14px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); letter-spacing: .04em; }
-    .tier-label b { color: var(--accent); }
-    .tier-body { display: flex; flex-wrap: wrap; gap: 12px; padding: 14px; }
+    .field textarea { resize: vertical; min-height: 58px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+    .field .hint { font-size: 11px; color: var(--faint2); margin-top: 5px; line-height: 1.5; }
+    .field .hint code { color: var(--muted); background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 5px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .check { display: flex; align-items: center; gap: 9px; margin: 4px 0 18px; cursor: pointer; }
+    .check input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .check label { font-size: 13px; color: var(--text); cursor: pointer; }
+    button.go {
+      width: 100%; padding: 13px; border: none; border-radius: var(--radius-sm); cursor: pointer;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.2px; color: #02121d;
+      background: linear-gradient(120deg, var(--accent-2), var(--accent) 70%);
+      box-shadow: 0 10px 26px -10px rgba(24, 168, 232, 0.85), inset 0 1px 0 rgba(255,255,255,0.4);
+      transition: transform 0.16s var(--ease), box-shadow 0.16s var(--ease), filter 0.16s var(--ease);
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+    }
+    button.go:hover { transform: translateY(-1px); box-shadow: 0 16px 34px -12px rgba(24, 168, 232, 0.95); filter: brightness(1.05); }
+    button.go:active { transform: translateY(0); }
+    button.go[disabled] { filter: grayscale(0.3) brightness(0.85); cursor: progress; transform: none; }
+    .spinner { width: 15px; height: 15px; border: 2px solid rgba(2,18,29,0.35); border-top-color: #02121d; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .canvas { min-height: 60vh; padding: 26px 28px; }
+    .plan-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+    .plan-head .title { font-size: 17px; font-weight: 600; }
+    .plan-head .chip { font-size: 12px; color: var(--muted); border: 1px solid var(--border); padding: 5px 11px; border-radius: 999px; }
+    .plan-head .chip b { color: var(--text); font-weight: 600; }
+    .plan-head .example { color: #03303f; background: linear-gradient(120deg, var(--accent-2), var(--accent)); border: none; font-weight: 600; }
+
+    .timeline { position: relative; }
+    .tier { position: relative; display: grid; grid-template-columns: 130px 1fr; gap: 18px; padding-bottom: 26px; }
+    .tier:last-child { padding-bottom: 4px; }
+    .rail { position: relative; display: flex; flex-direction: column; align-items: center; padding-top: 4px; }
+    .rail .node {
+      width: 54px; height: 54px; border-radius: 16px; flex: none;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(150deg, rgba(24,168,232,0.22), rgba(10,26,52,0.6));
+      border: 1px solid var(--border-strong);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 22px -12px rgba(24,168,232,0.6);
+    }
+    .rail .node .w { font-size: 19px; font-weight: 650; color: var(--accent-2); line-height: 1; }
+    .rail .node .lbl { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+    .rail .line { flex: 1; width: 2px; margin-top: 8px; border-radius: 2px;
+      background: linear-gradient(var(--accent) 0%, rgba(24,168,232,0.08) 100%); }
+    .tier:last-child .rail .line { display: none; }
+
+    .releases { display: flex; flex-wrap: wrap; gap: 14px; align-content: flex-start; }
     .release {
-      min-width: 180px; border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; background: var(--panel-2);
+      width: 232px; padding: 15px 16px; border-radius: var(--radius);
+      background: rgba(14, 27, 50, 0.66);
+      border: 1px solid var(--border);
+      transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+      opacity: 0; transform: translateY(10px);
+      animation: rise 0.5s var(--ease) forwards;
     }
-    .release.skipped { opacity: .45; }
-    .release .r-name { font-weight: 700; font-size: 14px; }
-    .release .r-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
-    .badges { margin-top: 9px; display: flex; gap: 6px; flex-wrap: wrap; }
-    .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
-    .badge.on { color: var(--ok); border-color: var(--ok); }
-    .badge.off { color: var(--warn); border-color: var(--warn); }
-    .arrow { text-align: center; color: var(--dim); font-size: 18px; padding: 4px 0; }
+    @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+    .release:hover { transform: translateY(-3px); border-color: var(--border-strong); box-shadow: 0 18px 40px -22px rgba(24,168,232,0.5); }
+    .release.skip { opacity: 0.46; }
+    .release.skip:hover { transform: none; }
+    .release .r-top { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+    .release .r-ico { width: 30px; height: 30px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center;
+      background: var(--accent-soft); color: var(--accent-2); font-size: 15px; }
+    .release .r-name { font-size: 14px; font-weight: 600; line-height: 1.2; word-break: break-word; }
+    .release .r-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .badge { font-size: 11px; padding: 3px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); color: var(--muted); }
+    .badge i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .badge.on { color: var(--ok); border-color: rgba(52,214,166,0.4); background: rgba(52,214,166,0.08); }
+    .badge.off { color: var(--warn); border-color: rgba(242,180,76,0.4); background: rgba(242,180,76,0.08); }
+
+    .hero { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px 20px; color: var(--muted); }
+    .hero .orbit { width: 96px; height: 96px; margin-bottom: 22px; position: relative; }
+    .hero .orbit span { position: absolute; inset: 0; border-radius: 50%; border: 1px solid var(--border-strong); }
+    .hero .orbit span:nth-child(2) { inset: 16px; opacity: 0.7; }
+    .hero .orbit span:nth-child(3) { inset: 32px; opacity: 0.5; }
+    .hero .orbit .core { position: absolute; inset: 42px; border-radius: 50%; background: linear-gradient(150deg, var(--accent-2), var(--accent)); box-shadow: 0 0 24px var(--accent); border: none; }
+    .hero h3 { color: var(--text); font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+    .hero p { margin: 0; font-size: 13.5px; max-width: 360px; line-height: 1.6; }
+
+    .err { background: rgba(120,30,40,0.32); border: 1px solid rgba(225,80,90,0.5); color: #ffd6da; padding: 13px 15px; border-radius: var(--radius-sm); font-size: 13px; white-space: pre-wrap; }
+
+    @media (max-width: 880px) {
+      main { grid-template-columns: 1fr; }
+      .config { position: static; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1><span class="tag">helm-spray</span></h1>
-    <span class="sub">configure and visualise a weight-ordered umbrella deployment</span>
+  <h2 class="sr-only">helm-spray: configure a deployment and view its weight-ordered plan.</h2>
+
+  <header class="topbar">
+    <div class="logo">
+      <div class="mark" aria-hidden="true"></div>
+      <h1>helm<b>-</b>spray</h1>
+    </div>
+    <span class="tagline">weight-ordered umbrella deployment</span>
+    <span class="spacer"></span>
+    <span class="pill"><span class="dot"></span> ready</span>
   </header>
+
   <main>
-    <section class="config">
+    <section class="panel config">
       <h2>Configuration</h2>
-      <form id="form">
+      <form id="form" autocomplete="off">
         <div class="field">
           <label for="chart">Umbrella chart</label>
           <input id="chart" name="chart" placeholder="./path/to/umbrella-chart" required />
-          <div class="hint">A local chart path (file or directory), resolved relative to where the server was started. Remote repo/OCI references are supported by the <code>helm spray</code> CLI.</div>
+          <div class="hint">A local chart path (file or directory). Remote <code>repo/chart</code> and <code>oci://</code> references are handled by the <code>helm spray</code> CLI.</div>
         </div>
-        <div class="row">
+        <div class="grid2">
           <div class="field">
             <label for="namespace">Namespace</label>
             <input id="namespace" name="namespace" placeholder="default" />
           </div>
           <div class="field">
             <label for="prefix">Release prefix</label>
-            <input id="prefix" name="prefix" placeholder="(none)" />
+            <input id="prefix" name="prefix" placeholder="none" />
           </div>
         </div>
         <div class="field">
-          <label for="targets">Targets (comma-separated)</label>
-          <input id="targets" name="targets" placeholder="all sub-charts" />
+          <label for="targets">Targets</label>
+          <input id="targets" name="targets" placeholder="all sub-charts (comma-separated)" />
         </div>
         <div class="field">
-          <label for="excludes">Excludes (comma-separated)</label>
-          <input id="excludes" name="excludes" placeholder="none" />
+          <label for="excludes">Excludes</label>
+          <input id="excludes" name="excludes" placeholder="none (comma-separated)" />
         </div>
         <div class="field">
-          <label for="set">Set values (one key=value per line)</label>
-          <textarea id="set" name="set" placeholder="tags.front-end=true"></textarea>
+          <label for="set">Set values</label>
+          <textarea id="set" name="set" placeholder="tags.front-end=true&#10;one key=value per line"></textarea>
         </div>
-        <div class="field checkbox">
-          <input type="checkbox" id="prefixNs" />
-          <label for="prefixNs" style="margin:0">Prefix releases with namespace</label>
-        </div>
-        <button type="submit" class="primary" id="go">Visualise plan</button>
+        <label class="check"><input type="checkbox" id="prefixNs" /><span>Prefix releases with namespace</span></label>
+        <button type="submit" class="go" id="go"><span id="go-label">Visualise plan</span></button>
       </form>
     </section>
-    <section class="canvas" id="canvas">
-      <div class="empty">Enter an umbrella chart and click <b>Visualise plan</b> to see the weight-ordered deployment.</div>
-    </section>
+
+    <section class="panel canvas" id="canvas" aria-live="polite"></section>
   </main>
 
   <script>
     const $ = (id) => document.getElementById(id);
-    const splitList = (v) => v.split(",").map(s => s.trim()).filter(Boolean);
-    const splitLines = (v) => v.split("\n").map(s => s.trim()).filter(Boolean);
+    const splitList = (v) => v.split(",").map((s) => s.trim()).filter(Boolean);
+    const splitLines = (v) => v.split("\n").map((s) => s.trim()).filter(Boolean);
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const EXAMPLE = {
+      chart: "./skyward-atc",
+      namespace: "default",
+      tiers: [
+        { weight: 0, releases: [
+          { release: "flightdb", subChart: "flightdb", appVersion: "16", targeted: true, allowedByTags: true },
+          { release: "telemetry-bus", subChart: "telemetry-bus", appVersion: "2", targeted: true, allowedByTags: true } ] },
+        { weight: 1, releases: [
+          { release: "radar-ingest", subChart: "radar-ingest", appVersion: "1.0", targeted: true, allowedByTags: true },
+          { release: "flight-plan-service", subChart: "flight-plan-service", appVersion: "1.0", targeted: true, allowedByTags: true } ] },
+        { weight: 2, releases: [
+          { release: "conflict-detection", subChart: "conflict-detection", appVersion: "1.0", targeted: true, allowedByTags: true },
+          { release: "arrival-sequencer", subChart: "arrival-sequencer", appVersion: "1.0", targeted: false, allowedByTags: true } ] },
+        { weight: 3, releases: [
+          { release: "controller-gateway", subChart: "controller-gateway", appVersion: "1.0", targeted: true, allowedByTags: true },
+          { release: "controller-ui", subChart: "controller-ui", appVersion: "1.0", targeted: true, allowedByTags: false } ] },
+      ],
+    };
+
+    function renderHeroError(msg) {
+      $("canvas").innerHTML = '<div class="err">' + esc(msg) + "</div>";
     }
 
-    function renderError(msg) {
-      $("canvas").innerHTML = '<div class="err">' + escapeHtml(msg) + '</div>';
+    function releaseCard(r, i) {
+      const live = r.targeted && r.allowedByTags;
+      let sub = r.subChart + (r.alias ? " (alias " + r.alias + ")" : "");
+      if (r.appVersion) sub += " · v" + r.appVersion;
+      const tBadge = '<span class="badge ' + (r.targeted ? "on" : "off") + '"><i></i>' + (r.targeted ? "targeted" : "not targeted") + "</span>";
+      const gBadge = '<span class="badge ' + (r.allowedByTags ? "on" : "off") + '"><i></i>' + (r.allowedByTags ? "tags ok" : "tag-excluded") + "</span>";
+      return (
+        '<div class="release ' + (live ? "" : "skip") + '" style="animation-delay:' + (i * 55) + 'ms">' +
+        '<div class="r-top"><div class="r-ico">◇</div><div><div class="r-name">' + esc(r.release) + "</div>" +
+        '<div class="r-sub">' + esc(sub) + "</div></div></div>" +
+        '<div class="badges">' + tBadge + gBadge + "</div></div>"
+      );
     }
 
-    function renderPlan(plan) {
+    function renderPlan(plan, isExample) {
       const tiers = plan.tiers || [];
-      let html = '<div class="plan-head">'
-        + '<span class="name">' + escapeHtml(plan.chart) + '</span>'
-        + '<span class="meta">namespace: <b>' + escapeHtml(plan.namespace) + '</b></span>'
-        + '<span class="meta">' + tiers.length + ' weight tier(s)</span>'
-        + '</div>';
-
-      if (tiers.length === 0) {
-        html += '<div class="empty">No sub-charts found in this umbrella chart.</div>';
-        $("canvas").innerHTML = html;
-        return;
+      let h = '<div class="plan-head"><span class="title">' + esc(plan.chart) + "</span>" +
+        '<span class="chip">namespace <b>' + esc(plan.namespace) + "</b></span>" +
+        '<span class="chip"><b>' + tiers.length + "</b> weight tier" + (tiers.length === 1 ? "" : "s") + "</span>";
+      if (isExample) h += '<span class="chip example">example</span>';
+      h += "</div>";
+      if (!tiers.length) { h += '<div class="hero"><h3>No sub-charts found</h3><p>This umbrella chart declares no dependencies.</p></div>'; $("canvas").innerHTML = h; return; }
+      h += '<div class="timeline">';
+      let idx = 0;
+      for (const t of tiers) {
+        h += '<div class="tier"><div class="rail"><div class="node"><span class="w">' + esc(t.weight) + '</span><span class="lbl">weight</span></div><div class="line"></div></div><div class="releases">';
+        for (const r of (t.releases || [])) h += releaseCard(r, idx++);
+        h += "</div></div>";
       }
-
-      tiers.forEach((tier, i) => {
-        html += '<div class="tier"><div class="tier-label">deploys at <b>weight ' + tier.weight + '</b> &middot; ' + tier.releases.length + ' release(s), together</div><div class="tier-body">';
-        (tier.releases || []).forEach(r => {
-          const deployed = r.targeted && r.allowedByTags;
-          html += '<div class="release' + (deployed ? "" : " skipped") + '">';
-          html += '<div class="r-name">' + escapeHtml(r.release) + '</div>';
-          let sub = r.subChart;
-          if (r.alias) sub += ' (alias ' + r.alias + ')';
-          if (r.appVersion) sub += ' &middot; v' + escapeHtml(r.appVersion);
-          html += '<div class="r-sub">' + escapeHtml(sub) + '</div>';
-          html += '<div class="badges">';
-          html += '<span class="badge ' + (r.targeted ? "on" : "off") + '">' + (r.targeted ? "targeted" : "not targeted") + '</span>';
-          html += '<span class="badge ' + (r.allowedByTags ? "on" : "off") + '">' + (r.allowedByTags ? "tags ok" : "tag-excluded") + '</span>';
-          html += '</div></div>';
-        });
-        html += '</div></div>';
-        if (i < tiers.length - 1) html += '<div class="arrow">&#8595; then</div>';
-      });
-      $("canvas").innerHTML = html;
+      h += "</div>";
+      $("canvas").innerHTML = h;
     }
 
     $("form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = $("go");
-      btn.disabled = true; btn.textContent = "Resolving…";
+      btn.disabled = true;
+      $("go-label").textContent = "Resolving";
+      btn.insertAdjacentHTML("afterbegin", '<span class="spinner"></span>');
       try {
         const body = {
           chart: $("chart").value.trim(),
@@ -186,20 +315,21 @@
           excludes: splitList($("excludes").value),
           set: splitLines($("set").value),
         };
-        const resp = await fetch("/api/plan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
+        const resp = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
         const data = await resp.json();
-        if (!resp.ok) { renderError(data.error || ("request failed: " + resp.status)); return; }
-        renderPlan(data);
+        if (!resp.ok) { renderHeroError(data.error || ("request failed: " + resp.status)); return; }
+        renderPlan(data, false);
       } catch (err) {
-        renderError(String(err));
+        renderHeroError(String(err));
       } finally {
-        btn.disabled = false; btn.textContent = "Visualise plan";
+        btn.disabled = false;
+        const sp = btn.querySelector(".spinner"); if (sp) sp.remove();
+        $("go-label").textContent = "Visualise plan";
       }
     });
+
+    // Show an illustrative example on first load so the canvas is never empty.
+    renderPlan(EXAMPLE, true);
   </script>
 </body>
 </html>
