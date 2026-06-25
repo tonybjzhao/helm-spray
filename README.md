@@ -171,9 +171,10 @@ valid YAML when the include is not yet applied.
 
 ### Tags
 
-Helm Spray honours Helm **tags** declared on dependencies. A tagged sub-chart is
-deployed only when one of its tags is enabled; an untagged sub-chart is always
-deployed:
+Helm Spray honours Helm **tags** declared on dependencies, with the same default
+as Helm itself: **a tag is enabled unless you explicitly disable it**. A tagged
+sub-chart is therefore deployed unless *every* one of its tags is set to `false`;
+an untagged sub-chart is always deployed:
 
 ```yaml
 dependencies:
@@ -186,12 +187,16 @@ dependencies:
 ```
 
 ```console
-$ helm spray --set tags.front-end=true ./my-umbrella-chart
+# Deploy everything (tags default to enabled):
+$ helm spray ./my-umbrella-chart
+
+# Skip the front-end group:
+$ helm spray --set tags.front-end=false ./my-umbrella-chart
 ```
 
-Tags must be provided via `--values/-f`, `--set`, `--set-string`, or
+Tag overrides are read from `--values/-f`, `--set`, `--set-string`, or
 `--set-file` (values from the cluster, e.g. with `--reuse-values`, are not
-considered). A tag value may be a boolean or a string (`"true"`, `"1"`, ...).
+considered). A tag value may be a boolean or a string (`"false"`, `"0"`, ...).
 
 > Helm Spray reserves Helm *conditions* for its own use (`<name>.enabled`); other
 > conditions are ignored.

@@ -12,6 +12,11 @@ Modernisation of helm-spray as a Helm v4 plugin.
   aborting the run; tag matching accepts string values from value files;
   rendered manifests are split on YAML document boundaries; `--prefix-releases`
   is validated; `--reset-values` together with `--reuse-values` is rejected.
+* **Behaviour change:** tag handling now matches Helm's own semantics — a tag is
+  enabled by default, so a tagged sub-chart is sprayed unless every one of its
+  tags is explicitly set to `false`. Previously a tag had to be explicitly set
+  `true`, which inverted Helm's default and meant an idiomatic tagged umbrella
+  deployed nothing unless every tag was passed on the command line.
 * Hardened chart fetching (pure Go, no shell, no current-directory writes) and
   redacted secret `--set`/`--set-string`/`--set-file` values from debug logs.
 * Reworked readiness gating: typed checks for Deployments, StatefulSets,

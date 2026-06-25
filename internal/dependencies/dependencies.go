@@ -86,18 +86,23 @@ func Get(chart *chart.Chart, values *common.Values, targets []string, excludes [
 			dependencies[i].Targeted = true
 		}
 
-		// Loop on the tags associated to the dependency and check with the tags provided in the values
-		dependencies[i].AllowedByTags = false
+		// A dependency's tags decide whether it is included in the spray. This
+		// follows Helm's own tag semantics: a tag is enabled by default, so a
+		// tagged sub-chart is allowed unless every one of its tags is explicitly
+		// set to false in the provided values. (A sub-chart with no tags is always
+		// allowed.) The previous behaviour required a tag to be explicitly set true,
+		// which inverted Helm's default and meant an idiomatic tagged umbrella
+		// deployed nothing unless every tag was passed on the command line.
 		if len(req.Tags) == 0 {
 			dependencies[i].HasTags = false
 			dependencies[i].AllowedByTags = true
 		} else {
 			dependencies[i].HasTags = true
+			dependencies[i].AllowedByTags = false
 			for _, tag := range req.Tags {
-				for k, v := range providedTags {
-					if k == tag && isTagTrue(v) {
-						dependencies[i].AllowedByTags = true
-					}
+				if v, present := providedTags[tag]; !present || isTagTrue(v) {
+					dependencies[i].AllowedByTags = true
+					break
 				}
 			}
 		}

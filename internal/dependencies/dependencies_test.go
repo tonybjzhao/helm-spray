@@ -77,8 +77,10 @@ func TestGetParsesAndValidatesWeight(t *testing.T) {
 	}
 }
 
-// Tags must be honoured whether provided as a real bool (--set) or as a string
-// (YAML values file). Sub-charts without tags are always allowed.
+// Tags follow Helm's own semantics: a tag is enabled by default, so a tagged
+// sub-chart is allowed unless every one of its tags is explicitly set to false.
+// Tag values may be real bools (from --set) or strings (from a YAML values file).
+// Sub-charts without tags are always allowed.
 func TestGetTagMatching(t *testing.T) {
 	deps := []*chart.Dependency{
 		{Name: "front", Tags: []string{"frontend"}},
@@ -90,11 +92,11 @@ func TestGetTagMatching(t *testing.T) {
 		tags                            map[string]any
 		wantFront, wantBack, wantAlways bool
 	}{
-		{"bool true", map[string]any{"frontend": true}, true, false, true},
-		{"string true", map[string]any{"frontend": "true"}, true, false, true},
-		{"string True", map[string]any{"frontend": "True"}, true, false, true},
-		{"bool false", map[string]any{"frontend": false}, false, false, true},
-		{"none", map[string]any{}, false, false, true},
+		{"no tags set (default enabled)", map[string]any{}, true, true, true},
+		{"disable frontend (bool)", map[string]any{"frontend": false}, false, true, true},
+		{"disable frontend (string)", map[string]any{"frontend": "false"}, false, true, true},
+		{"disable both", map[string]any{"frontend": false, "backend": false}, false, false, true},
+		{"enable frontend, disable backend", map[string]any{"frontend": true, "backend": false}, true, false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -114,6 +116,30 @@ func TestGetTagMatching(t *testing.T) {
 				t.Errorf("always allowed: got %v want %v", m["always"].AllowedByTags, tc.wantAlways)
 			}
 		})
+	}
+}
+
+// A sub-chart with several tags is allowed when any one of them is enabled, and
+// excluded only when all of them are explicitly disabled.
+func TestGetMultiTagAllowedIfAnyEnabled(t *testing.T) {
+	deps := []*chart.Dependency{{Name: "multi", Tags: []string{"frontend", "backend"}}}
+
+	anyEnabled := common.Values{"tags": map[string]any{"frontend": false}} // backend defaults enabled
+	got, err := Get(umbrella(deps...), &anyEnabled, nil, nil, "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !byUsedName(got)["multi"].AllowedByTags {
+		t.Error("a chart with at least one enabled tag should be allowed")
+	}
+
+	allDisabled := common.Values{"tags": map[string]any{"frontend": false, "backend": false}}
+	got2, err := Get(umbrella(deps...), &allDisabled, nil, nil, "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if byUsedName(got2)["multi"].AllowedByTags {
+		t.Error("a chart with all tags disabled should not be allowed")
 	}
 }
 
