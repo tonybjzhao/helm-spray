@@ -32,6 +32,27 @@ func byUsedName(deps []Dependency) map[string]Dependency {
 	return m
 }
 
+// The AppVersion is taken from each built sub-chart's own Chart.yaml, keyed by
+// the sub-chart name even when the dependency is aliased.
+func TestGetResolvesSubChartAppVersion(t *testing.T) {
+	ch := umbrella(&chart.Dependency{Name: "svc"}, &chart.Dependency{Name: "db", Alias: "store"})
+	ch.AddDependency(&chart.Chart{Metadata: &chart.Metadata{Name: "svc", AppVersion: "1.2.3"}})
+	ch.AddDependency(&chart.Chart{Metadata: &chart.Metadata{Name: "db", AppVersion: "16"}})
+
+	vals := common.Values{}
+	got, err := Get(ch, &vals, nil, nil, "", false)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	m := byUsedName(got)
+	if m["svc"].AppVersion != "1.2.3" {
+		t.Errorf("svc appVersion = %q, want 1.2.3", m["svc"].AppVersion)
+	}
+	if m["store"].AppVersion != "16" {
+		t.Errorf("aliased db appVersion = %q, want 16", m["store"].AppVersion)
+	}
+}
+
 // A sub-chart that omits its weight must default to 0 rather than erroring.
 func TestGetWeightDefaultsToZeroWhenMissing(t *testing.T) {
 	vals := common.Values{}

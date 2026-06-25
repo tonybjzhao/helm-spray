@@ -84,11 +84,20 @@ func isLoopback(host string) bool {
 }
 
 // isRemoteRef reports whether s is a remote chart or value-file reference that the
-// read-only web UI must not fetch server-side.
+// read-only web UI must not fetch server-side. The scheme is matched
+// case-insensitively so an uppercased scheme (e.g. "HTTPS://") cannot slip past
+// the guard.
 func isRemoteRef(s string) bool {
-	return strings.HasPrefix(s, "http://") ||
-		strings.HasPrefix(s, "https://") ||
-		strings.HasPrefix(s, "oci://")
+	s = strings.TrimSpace(s)
+	i := strings.Index(s, "://")
+	if i <= 0 {
+		return false
+	}
+	switch strings.ToLower(s[:i]) {
+	case "http", "https", "oci":
+		return true
+	}
+	return false
 }
 
 // sprayFromRequest decodes and validates a planRequest and builds the

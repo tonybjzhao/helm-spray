@@ -15,13 +15,16 @@ limitations under the License.
 // ready. It queries the Kubernetes API directly through the embedded client-go
 // client — no external kubectl binary is required — and evaluates Deployments,
 // StatefulSets, DaemonSets and Jobs from their typed status. The clientset is
-// built once from the ambient kubeconfig, using the same default loading rules
-// and current-context resolution as helm and kubectl.
+// built once from the ambient kubeconfig (the same default loading rules as helm
+// and kubectl) and honours the connection settings helm exports to its plugins
+// (HELM_KUBECONTEXT, HELM_KUBEAPISERVER, HELM_KUBETOKEN, ...), so readiness is
+// checked against the same cluster, context and identity that helm deploys to.
 package readiness
 
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -54,7 +57,7 @@ var (
 func defaultClient() (kubernetes.Interface, error) {
 	clientOnce.Do(func() {
 		rules := clientcmd.NewDefaultClientConfigLoadingRules()
-		cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, &clientcmd.ConfigOverrides{})
+		cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, helmKubeOverrides())
 		restCfg, err := cfg.ClientConfig()
 		if err != nil {
 			clientErr = fmt.Errorf("loading kubeconfig: %w", err)
@@ -66,6 +69,30 @@ func defaultClient() (kubernetes.Interface, error) {
 		clientset, clientErr = kubernetes.NewForConfig(restCfg)
 	})
 	return clientset, clientErr
+}
+
+// helmKubeOverrides mirrors the kube connection settings helm exports to its
+// plugins (see helm.sh/helm cli/environment.go), so readiness is checked against
+// the same cluster, context and identity helm deploys to — in particular helm's
+// --kube-context — rather than the kubeconfig's default current-context.
+func helmKubeOverrides() *clientcmd.ConfigOverrides {
+	o := &clientcmd.ConfigOverrides{}
+	if v := os.Getenv("HELM_KUBECONTEXT"); v != "" {
+		o.CurrentContext = v
+	}
+	if v := os.Getenv("HELM_KUBEAPISERVER"); v != "" {
+		o.ClusterInfo.Server = v
+	}
+	if v := os.Getenv("HELM_KUBETOKEN"); v != "" {
+		o.AuthInfo.Token = v
+	}
+	if v := os.Getenv("HELM_KUBEASUSER"); v != "" {
+		o.AuthInfo.Impersonate = v
+	}
+	if v := os.Getenv("HELM_KUBECAFILE"); v != "" {
+		o.ClusterInfo.CertificateAuthority = v
+	}
+	return o
 }
 
 // AreDeploymentsReady reports whether every named Deployment in the namespace has

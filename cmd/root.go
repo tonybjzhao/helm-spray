@@ -249,6 +249,9 @@ func parseTimeout(s string) (int, error) {
 	if err != nil || d < 0 {
 		return 0, fmt.Errorf("invalid --timeout %q: use seconds (e.g. 300) or a duration (e.g. 5m, 300s)", s)
 	}
+	if d > 0 && d < time.Second {
+		return 0, fmt.Errorf("invalid --timeout %q: must be at least 1s", s)
+	}
 	return int(d.Seconds()), nil
 }
 

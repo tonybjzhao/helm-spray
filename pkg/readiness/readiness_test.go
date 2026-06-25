@@ -227,6 +227,22 @@ func TestAreJobsReadyFailsFast(t *testing.T) {
 	}
 }
 
+func TestHelmKubeOverrides(t *testing.T) {
+	t.Setenv("HELM_KUBECONTEXT", "prod-cluster")
+	t.Setenv("HELM_KUBETOKEN", "tok")
+	t.Setenv("HELM_KUBEAPISERVER", "https://api.example:6443")
+	o := helmKubeOverrides()
+	if o.CurrentContext != "prod-cluster" {
+		t.Errorf("CurrentContext = %q, want prod-cluster", o.CurrentContext)
+	}
+	if o.AuthInfo.Token != "tok" {
+		t.Errorf("token = %q, want tok", o.AuthInfo.Token)
+	}
+	if o.ClusterInfo.Server != "https://api.example:6443" {
+		t.Errorf("server = %q, want the HELM_KUBEAPISERVER value", o.ClusterInfo.Server)
+	}
+}
+
 func TestReadinessClientErrorPropagates(t *testing.T) {
 	orig := client
 	defer func() { client = orig }()

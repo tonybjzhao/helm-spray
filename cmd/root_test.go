@@ -102,6 +102,7 @@ func TestParseTimeout(t *testing.T) {
 		{"-5", 0, true},      // negative seconds rejected
 		{"-5s", 0, true},     // negative duration rejected
 		{"abc", 0, true},     // not a number or duration
+		{"500ms", 0, true},   // positive sub-second duration rejected
 	}
 	for _, tc := range cases {
 		got, err := parseTimeout(tc.in)
