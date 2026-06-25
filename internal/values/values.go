@@ -2,14 +2,17 @@ package values
 
 import (
 	"fmt"
-	"github.com/gemalto/helm-spray/v4/internal/log"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"helm.sh/helm/v3/pkg/cli/values"
-	"helm.sh/helm/v3/pkg/getter"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/gemalto/helm-spray/v4/internal/log"
+	chart "helm.sh/helm/v4/pkg/chart/v2"
+	"helm.sh/helm/v4/pkg/chart/common"
+	commonutil "helm.sh/helm/v4/pkg/chart/common/util"
+	chartutil "helm.sh/helm/v4/pkg/chart/v2/util"
+	"helm.sh/helm/v4/pkg/cli/values"
+	"helm.sh/helm/v4/pkg/getter"
 )
 
 var httpProvider = getter.Provider{
@@ -17,8 +20,8 @@ var httpProvider = getter.Provider{
 	New:     getter.NewHTTPGetter,
 }
 
-func Merge(chart *chart.Chart, reuseValues bool, valueOpts *values.Options, verbose bool) (chartutil.Values, string, error) {
-	var chartValues chartutil.Values
+func Merge(chart *chart.Chart, reuseValues bool, valueOpts *values.Options, verbose bool) (common.Values, string, error) {
+	var chartValues common.Values
 	var updatedChartValuesAsString string
 	var err error
 
@@ -29,12 +32,12 @@ func Merge(chart *chart.Chart, reuseValues bool, valueOpts *values.Options, verb
 		if err != nil {
 			return nil, "", fmt.Errorf("processing includes: %w", err)
 		}
-		updatedChartValues, err := chartutil.ReadValues([]byte(updatedChartValuesAsString))
+		updatedChartValues, err := common.ReadValues([]byte(updatedChartValuesAsString))
 		if err != nil {
 			return nil, "", fmt.Errorf("generating updated values after processing of include(s): %w", err)
 		}
 		// Merge the new values (including the ones coming from chart dependencies)
-		chartValues, err = chartutil.CoalesceValues(chart, updatedChartValues)
+		chartValues, err = commonutil.CoalesceValues(chart, updatedChartValues)
 		if err != nil {
 			if verbose {
 				log.WithNumberedLines(1, updatedChartValuesAsString)
@@ -42,7 +45,7 @@ func Merge(chart *chart.Chart, reuseValues bool, valueOpts *values.Options, verb
 			return nil, "", fmt.Errorf("merging updated values with umbrella chart: %w", err)
 		}
 	} else {
-		chartValues, err = chartutil.CoalesceValues(chart, chart.Values)
+		chartValues, err = commonutil.CoalesceValues(chart, chart.Values)
 		if err != nil {
 			return nil, "", fmt.Errorf("merging values with umbrella chart: %w", err)
 		}
@@ -137,7 +140,7 @@ func processIncludeInValuesFile(chart *chart.Chart, verbose bool) (string, error
 
 					dataToAdd := string(f.Data)
 					if subValuePath != "" {
-						data, err := chartutil.ReadValues(f.Data)
+						data, err := common.ReadValues(f.Data)
 						if err != nil {
 							return "", fmt.Errorf("reading values from file \"%s\": %w", includeFileName, err)
 						}

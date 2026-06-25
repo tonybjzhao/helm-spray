@@ -3,10 +3,11 @@ package dependencies
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gemalto/helm-spray/v4/internal/log"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
 	"reflect"
+
+	"github.com/gemalto/helm-spray/v4/internal/log"
+	chart "helm.sh/helm/v4/pkg/chart/v2"
+	"helm.sh/helm/v4/pkg/chart/common"
 )
 
 // Dependency ...
@@ -22,7 +23,7 @@ type Dependency struct {
 	AllowedByTags            bool
 }
 
-func Get(chart *chart.Chart, values *chartutil.Values, targets []string, excludes []string, releasePrefix string, verbose bool) ([]Dependency, error) {
+func Get(chart *chart.Chart, values *common.Values, targets []string, excludes []string, releasePrefix string, verbose bool) ([]Dependency, error) {
 	// Compute tags
 	providedTags := tags(values, verbose)
 
@@ -117,7 +118,7 @@ func Get(chart *chart.Chart, values *chartutil.Values, targets []string, exclude
 	return dependencies, nil
 }
 
-func tags(values *chartutil.Values, verbose bool) map[string]interface{} {
+func tags(values *common.Values, verbose bool) map[string]interface{} {
 	// Get the list of "tags" specified in the values...
 	// (locally-provided values only; values coming from server are not considered)
 	if verbose {
@@ -130,7 +131,7 @@ func tags(values *chartutil.Values, verbose bool) map[string]interface{} {
 	}
 	if verbose {
 		for k, v := range providedTags {
-			log.Info(2, fmt.Sprintf("found tag \"%s: %s\"", k, fmt.Sprint(v)))
+			log.Info(2, "found tag \"%s: %s\"", k, fmt.Sprint(v))
 		}
 	}
 	return providedTags
