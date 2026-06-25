@@ -1,15 +1,24 @@
+// Package dependencies derives the per-sub-chart deployment metadata (weight,
+// targeting and tag allowance) from an umbrella chart and the merged values.
 package dependencies
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/gemalto/helm-spray/v4/internal/log"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
-	"reflect"
+	"strconv"
+	"strings"
+
+	"github.com/ThalesGroup/helm-spray/v5/internal/log"
+	"helm.sh/helm/v4/pkg/chart/common"
+	chart "helm.sh/helm/v4/pkg/chart/v2"
 )
 
-// Dependency ...
+// Dependency is the per-sub-chart metadata helm-spray computes from the umbrella
+// chart and the merged values. UsedName is the alias when one is set, otherwise
+// the chart Name; CorrespondingReleaseName is UsedName with the configured
+// release prefix applied. Targeted reflects --target/--exclude, and
+// AllowedByTags reflects whether the sub-chart's tags are enabled.
 type Dependency struct {
 	Name                     string
 	Alias                    string
@@ -22,9 +31,21 @@ type Dependency struct {
 	AllowedByTags            bool
 }
 
-func Get(chart *chart.Chart, values *chartutil.Values, targets []string, excludes []string, releasePrefix string, verbose bool) ([]Dependency, error) {
+// Get derives the deployment metadata for every sub-chart declared in the
+// umbrella chart: its name and alias, its weight (defaulting to 0 when unset),
+// whether it is targeted given --target/--exclude, whether its tags are allowed
+// by the provided tag values, its AppVersion, and its release name. It performs
+// no I/O.
+func Get(chart *chart.Chart, values *common.Values, targets []string, excludes []string, releasePrefix string, verbose bool) ([]Dependency, error) {
 	// Compute tags
 	providedTags := tags(values, verbose)
+
+	// Index sub-chart appVersions by chart name once, so the per-dependency lookup
+	// below is O(1) rather than a nested scan over the built sub-charts.
+	appVersions := make(map[string]string, len(chart.Dependencies()))
+	for _, sub := range chart.Dependencies() {
+		appVersions[sub.Metadata.Name] = sub.Metadata.AppVersion
+	}
 
 	// Build the list of all dependencies, and their key attributes
 	dependencies := make([]Dependency, len(chart.Metadata.Dependencies))
@@ -36,6 +57,17 @@ func Get(chart *chart.Chart, values *chartutil.Values, targets []string, exclude
 			dependencies[i].UsedName = dependencies[i].Name
 		} else {
 			dependencies[i].UsedName = dependencies[i].Alias
+		}
+
+		// helm-spray toggles each sub-chart per release with
+		// "--set <usedName>.enabled=...", which only gates rendering when the
+		// dependency declares "condition: <usedName>.enabled". If that contract is
+		// not met the disable set is silently ignored and every release would
+		// deploy all sub-charts, breaking tier ordering. Warn loudly so a
+		// misconfigured umbrella is diagnosable rather than silently incorrect.
+		expectedCondition := dependencies[i].UsedName + ".enabled"
+		if !strings.Contains(req.Condition, expectedCondition) {
+			log.Info(1, "warning: sub-chart %q should declare condition %q for per-release enable/disable to work (found %q); deployment ordering may be incorrect", dependencies[i].UsedName, expectedCondition, req.Condition)
 		}
 
 		// Is dependency targeted?
@@ -61,77 +93,105 @@ func Get(chart *chart.Chart, values *chartutil.Values, targets []string, exclude
 			dependencies[i].Targeted = true
 		}
 
-		// Loop on the tags associated to the dependency and check with the tags provided in the values
-		dependencies[i].AllowedByTags = false
+		// A dependency's tags decide whether it is included in the spray. This
+		// follows Helm's own tag semantics: a tag is enabled by default, so a
+		// tagged sub-chart is allowed unless every one of its tags is explicitly
+		// set to false in the provided values. (A sub-chart with no tags is always
+		// allowed.) The previous behaviour required a tag to be explicitly set true,
+		// which inverted Helm's default and meant an idiomatic tagged umbrella
+		// deployed nothing unless every tag was passed on the command line.
 		if len(req.Tags) == 0 {
 			dependencies[i].HasTags = false
 			dependencies[i].AllowedByTags = true
 		} else {
 			dependencies[i].HasTags = true
+			dependencies[i].AllowedByTags = false
 			for _, tag := range req.Tags {
-				for k, v := range providedTags {
-					if k == tag && v == true {
-						dependencies[i].AllowedByTags = true
-					}
+				if v, present := providedTags[tag]; !present || isTagTrue(v) {
+					dependencies[i].AllowedByTags = true
+					break
 				}
 			}
 		}
 
-		// Get weight of the dependency. If no weight is specified, setting it to 0
+		// Weight of the dependency. If no weight is specified, it defaults to 0
+		// (as documented). A genuinely malformed weight is still reported.
 		dependencies[i].Weight = 0
-		weightJson, err := values.PathValue(dependencies[i].UsedName + ".weight")
-		if err != nil {
+		weightValue, err := values.PathValue(dependencies[i].UsedName + ".weight")
+		if err == nil {
+			weight, convErr := toWeight(weightValue)
+			if convErr != nil {
+				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].UsedName, convErr)
+			}
+			dependencies[i].Weight = weight
+		} else if noValue := (common.ErrNoValue{}); !errors.As(err, &noValue) {
 			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].UsedName, err)
 		}
-
-		weightInteger := 0
-		// Depending on the configuration of the json parser, integer can be returned either as Float64 or json.Number
-		if reflect.TypeOf(weightJson).String() == "json.Number" {
-			w, err := weightJson.(json.Number).Int64()
-			if err != nil {
-				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].UsedName, err)
-			}
-			weightInteger = int(w)
-
-		} else if reflect.TypeOf(weightJson).String() == "float64" {
-			weightInteger = int(weightJson.(float64))
-
-		} else {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be an integer", dependencies[i].UsedName)
-		}
-
-		if weightInteger < 0 {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be positive or equal to zero", dependencies[i].UsedName)
-		}
-		dependencies[i].Weight = weightInteger
 		dependencies[i].CorrespondingReleaseName = releasePrefix + dependencies[i].UsedName
 
-		// Get the AppVersion that is contained in the Chart.yaml file of the dependency sub-chart
-		for _, subChart := range chart.Dependencies() {
-			if subChart.Metadata.Name == dependencies[i].Name {
-				dependencies[i].AppVersion = subChart.Metadata.AppVersion
-				break
-			}
-		}
+		// The sub-chart's AppVersion comes from its own Chart.yaml.
+		dependencies[i].AppVersion = appVersions[dependencies[i].Name]
 	}
 	return dependencies, nil
 }
 
-func tags(values *chartutil.Values, verbose bool) map[string]interface{} {
+func tags(values *common.Values, verbose bool) map[string]any {
 	// Get the list of "tags" specified in the values...
 	// (locally-provided values only; values coming from server are not considered)
 	if verbose {
 		log.Info(1, "looking for \"tags\" in values provided through \"--values/-f\", \"--set\", \"--set-string\", and \"--set-file\"...")
 	}
-	var providedTags map[string]interface{}
+	var providedTags map[string]any
 	tags, err := values.Table("tags")
 	if err == nil {
 		providedTags = tags.AsMap()
 	}
 	if verbose {
 		for k, v := range providedTags {
-			log.Info(2, fmt.Sprintf("found tag \"%s: %s\"", k, fmt.Sprint(v)))
+			log.Info(2, "found tag \"%s: %s\"", k, fmt.Sprint(v))
 		}
 	}
 	return providedTags
+}
+
+// isTagTrue reports whether a tag value supplied through values enables the tag.
+// It accepts a boolean true as well as the string spellings understood by
+// strconv.ParseBool (e.g. "true", "True", "1"), so that a tag set in a YAML
+// values file (where it may be parsed as a string) behaves like a tag set via
+// --set (where Helm coerces it to a bool).
+func isTagTrue(v any) bool {
+	switch val := v.(type) {
+	case bool:
+		return val
+	case string:
+		b, err := strconv.ParseBool(strings.TrimSpace(val))
+		return err == nil && b
+	default:
+		return false
+	}
+}
+
+// toWeight converts a weight value parsed from the merged values into a
+// non-negative int. Depending on the YAML/JSON parser the raw value may be a
+// json.Number, a float64 or an int.
+func toWeight(raw any) (int, error) {
+	var weight int
+	switch v := raw.(type) {
+	case json.Number:
+		w, err := v.Int64()
+		if err != nil {
+			return 0, err
+		}
+		weight = int(w)
+	case float64:
+		weight = int(v)
+	case int:
+		weight = v
+	default:
+		return 0, fmt.Errorf("value shall be an integer")
+	}
+	if weight < 0 {
+		return 0, fmt.Errorf("value shall be positive or equal to zero")
+	}
+	return weight, nil
 }

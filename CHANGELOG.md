@@ -1,5 +1,54 @@
 # Release Notes
 
+## Version 5.0.0 - 06/25/2026
+
+Modernisation of helm-spray as a Helm v4 plugin.
+
+* Migrated the Go SDK from Helm v3 to Helm v4 and refreshed all dependencies,
+  clearing two code-reachable advisories (`govulncheck` reports none).
+* Detect the host helm version and emit version-appropriate flags (`--force` on
+  v3, `--force-replace` on v4); drive the `HELM_BIN` provided by the host.
+* Fixed defects: a missing sub-chart weight now defaults to 0 instead of
+  aborting the run; tag matching accepts string values from value files;
+  rendered manifests are split on YAML document boundaries; `--prefix-releases`
+  is validated; `--reset-values` together with `--reuse-values` is rejected.
+* **Behaviour change:** tag handling now matches Helm's own semantics — a tag is
+  enabled by default, so a tagged sub-chart is sprayed unless every one of its
+  tags is explicitly set to `false`. Previously a tag had to be explicitly set
+  `true`, which inverted Helm's default and meant an idiomatic tagged umbrella
+  deployed nothing unless every tag was passed on the command line.
+* Hardened chart fetching (pure Go, no shell, no current-directory writes) and
+  redacted secret `--set`/`--set-string`/`--set-file` values from debug logs.
+* Reworked readiness gating: typed checks for Deployments, StatefulSets,
+  DaemonSets and Jobs (Jobs honour `.spec.completions` and fail fast on a failed
+  Job), with capped exponential back-off polling. Readiness now queries the
+  Kubernetes API directly through the embedded client, so **`kubectl` is no
+  longer required** at runtime; `helm` remains the only external dependency.
+* Introduced client interfaces and `context.Context` propagation (SIGINT/SIGTERM
+  cancels in-flight helm processes), enabling automated unit and
+  integration tests from zero prior coverage.
+* Added `--output json` to print the weight-ordered deployment plan without
+  contacting the cluster.
+* `--timeout` now accepts a Helm-style duration (`5m`, `300s`) as well as a bare
+  number of seconds, so the value can be written the same way as for `helm`.
+* Added a `helm spray ui` embedded web interface to configure and visualise a
+  deployment, with a read-only live-status view that colours the plan as each
+  release reports its helm status, a helm-host version indicator, and a
+  light/dark theme. It can be launched pre-configured for a chart
+  (`helm spray ui ./chart -n ns`), opening already filled in and showing live
+  status. Deploying stays on the CLI; the UI never mutates the cluster.
+* Added a `helm spray uninstall [CHART]` command that removes the releases
+  created for an umbrella chart's sub-charts in reverse weight order, and a
+  `--prune` flag that, after deploying, uninstalls releases for sub-charts that
+  are no longer part of the umbrella chart.
+* Hardened the release supply chain: per-release `SHA256SUMS`, keyless cosign
+  signatures, an SPDX SBOM, and build-provenance attestation; the install script
+  now verifies the download against the published checksum.
+* Rewrote the README; added SECURITY and Code of Conduct documents, issue/PR
+  templates, and a CI workflow (build, gofmt, vet, test, golangci-lint, gosec,
+  govulncheck, plus an end-to-end job that runs the integration suite against a
+  kind cluster). Added a curated `.golangci.yml` and an `.editorconfig`.
+
 ## Version 4.0.13 - 11/27/2024
 * Bump to helm v3.16.3, k8s.io/api v0.31.3, go 1.22, and k8s.io/client-go v0.31.3
 * Fixed [`#92`](https://github.com/ThalesGroup/helm-spray/issues/92) (barmaths)

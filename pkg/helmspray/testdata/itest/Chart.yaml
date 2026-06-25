@@ -1,0 +1,11 @@
+apiVersion: v2
+name: itest
+version: 0.1.0
+description: Integration-test umbrella chart (two weight-ordered nginx sub-charts)
+dependencies:
+  - name: a
+    version: 0.1.0
+    condition: a.enabled
+  - name: b
+    version: 0.1.0
+    condition: b.enabled

@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>helm-spray</title>
+  <style>
+    :root {
+      /* Thales-inspired palette: deep navy + electric azure */
+      --bg-0: #060d1b;
+      --bg-1: #0a1730;
+      --bg-2: #0f1f3d;
+      --surface: rgba(18, 33, 60, 0.62);
+      --surface-solid: #122038;
+      --border: rgba(125, 160, 210, 0.16);
+      --border-strong: rgba(125, 170, 230, 0.34);
+      --text: #eaf2fd;
+      --muted: #93a8c8;
+      --faint: #6d82a4;
+      --faint2: #56688a;
+      --accent: #18a8e8;
+      --accent-2: #46d3ff;
+      --accent-soft: rgba(24, 168, 232, 0.14);
+      --ok: #34d6a6;
+      --warn: #f2b44c;
+      --radius: 14px;
+      --radius-sm: 10px;
+      --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --shadow: 0 18px 50px -20px rgba(0, 0, 0, 0.7);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1100px 600px at 78% -8%, rgba(24, 168, 232, 0.16), transparent 60%),
+        radial-gradient(900px 520px at 8% 108%, rgba(70, 211, 255, 0.08), transparent 55%),
+        linear-gradient(160deg, var(--bg-1) 0%, var(--bg-0) 60%, #03060f 100%);
+      background-color: var(--bg-0);
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: 0.1px;
+    }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    a { color: var(--accent-2); }
+
+    header.topbar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 20px 30px;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo .mark {
+      width: 34px; height: 34px; border-radius: 9px;
+      background: linear-gradient(150deg, var(--accent-2), var(--accent) 55%, #0e6fb0);
+      box-shadow: 0 6px 20px -6px rgba(24, 168, 232, 0.7), inset 0 1px 0 rgba(255,255,255,0.35);
+      position: relative; flex: none;
+    }
+    .logo .mark::before, .logo .mark::after {
+      content: ""; position: absolute; inset: 0; border-radius: 9px;
+      border: 1.5px solid rgba(255,255,255,0.5); margin: 8px;
+    }
+    .logo .mark::after { margin: 12.5px; opacity: 0.7; }
+    .logo h1 {
+      margin: 0; font-size: 19px; font-weight: 650; letter-spacing: 0.2px;
+    }
+    .logo h1 b { color: var(--accent-2); font-weight: 650; }
+    .topbar .tagline { color: var(--muted); font-size: 13px; border-left: 1px solid var(--border); padding-left: 14px; }
+    .topbar .spacer { flex: 1; }
+    .topbar .pill {
+      font-size: 12px; color: var(--muted); border: 1px solid var(--border);
+      padding: 5px 12px; border-radius: 999px; display: flex; align-items: center; gap: 7px;
+    }
+    .topbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+
+    main { display: grid; grid-template-columns: 360px 1fr; gap: 26px; padding: 26px 30px 40px; align-items: start; }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+    .config { padding: 22px; position: sticky; top: 26px; }
+    .config h2 { margin: 0 0 18px; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+    .field { margin-bottom: 15px; }
+    .field > label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; letter-spacing: 0.2px; }
+    .field input, .field textarea {
+      width: 100%; padding: 11px 12px; font-size: 13.5px; font-family: inherit;
+      color: var(--text); background: rgba(8, 16, 32, 0.6);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease), background 0.18s var(--ease);
+    }
+    .field input::placeholder, .field textarea::placeholder { color: var(--faint2); }
+    .field input:focus, .field textarea:focus {
+      outline: none; border-color: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft); background: rgba(8, 16, 32, 0.85);
+    }
+    .field textarea { resize: vertical; min-height: 58px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+    .field .hint { font-size: 11px; color: var(--faint2); margin-top: 5px; line-height: 1.5; }
+    .field .hint code { color: var(--muted); background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 5px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .check { display: flex; align-items: center; gap: 9px; margin: 4px 0 18px; cursor: pointer; }
+    .check input { width: 16px; height: 16px; accent-color: var(--accent); }
+    .check label { font-size: 13px; color: var(--text); cursor: pointer; }
+    button.go {
+      width: 100%; padding: 13px; border: none; border-radius: var(--radius-sm); cursor: pointer;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.2px; color: #02121d;
+      background: linear-gradient(120deg, var(--accent-2), var(--accent) 70%);
+      box-shadow: 0 10px 26px -10px rgba(24, 168, 232, 0.85), inset 0 1px 0 rgba(255,255,255,0.4);
+      transition: transform 0.16s var(--ease), box-shadow 0.16s var(--ease), filter 0.16s var(--ease);
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+    }
+    button.go:hover { transform: translateY(-1px); box-shadow: 0 16px 34px -12px rgba(24, 168, 232, 0.95); filter: brightness(1.05); }
+    button.go:active { transform: translateY(0); }
+    button.go[disabled] { filter: grayscale(0.3) brightness(0.85); cursor: progress; transform: none; }
+    .spinner { width: 15px; height: 15px; border: 2px solid rgba(2,18,29,0.35); border-top-color: #02121d; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .canvas { min-height: 60vh; padding: 26px 28px; }
+    .plan-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+    .plan-head .title { font-size: 17px; font-weight: 600; }
+    .plan-head .chip { font-size: 12px; color: var(--muted); border: 1px solid var(--border); padding: 5px 11px; border-radius: 999px; }
+    .plan-head .chip b { color: var(--text); font-weight: 600; }
+    .plan-head .example { color: #03303f; background: linear-gradient(120deg, var(--accent-2), var(--accent)); border: none; font-weight: 600; }
+
+    .timeline { position: relative; }
+    .tier { position: relative; display: grid; grid-template-columns: 130px 1fr; gap: 18px; padding-bottom: 26px; }
+    .tier:last-child { padding-bottom: 4px; }
+    .rail { position: relative; display: flex; flex-direction: column; align-items: center; padding-top: 4px; }
+    .rail .node {
+      width: 54px; height: 54px; border-radius: 16px; flex: none;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(150deg, rgba(24,168,232,0.22), rgba(10,26,52,0.6));
+      border: 1px solid var(--border-strong);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 22px -12px rgba(24,168,232,0.6);
+    }
+    .rail .node .w { font-size: 19px; font-weight: 650; color: var(--accent-2); line-height: 1; }
+    .rail .node .lbl { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+    .rail .line { flex: 1; width: 2px; margin-top: 8px; border-radius: 2px;
+      background: linear-gradient(var(--accent) 0%, rgba(24,168,232,0.08) 100%); }
+    .tier:last-child .rail .line { display: none; }
+
+    .releases { display: flex; flex-wrap: wrap; gap: 14px; align-content: flex-start; }
+    .release {
+      width: 232px; padding: 15px 16px; border-radius: var(--radius);
+      background: rgba(14, 27, 50, 0.66);
+      border: 1px solid var(--border);
+      transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+      opacity: 0; transform: translateY(10px);
+      animation: rise 0.5s var(--ease) forwards;
+    }
+    @keyframes rise { to { opacity: 1; transform: translateY(0); } }
+    .release:hover { transform: translateY(-3px); border-color: var(--border-strong); box-shadow: 0 18px 40px -22px rgba(24,168,232,0.5); }
+    .release.skip { opacity: 0.46; }
+    .release.skip:hover { transform: none; }
+    .release .r-top { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+    .release .r-ico { width: 30px; height: 30px; border-radius: 9px; flex: none; display: flex; align-items: center; justify-content: center;
+      background: var(--accent-soft); color: var(--accent-2); font-size: 15px; }
+    .release .r-name { font-size: 14px; font-weight: 600; line-height: 1.2; word-break: break-word; }
+    .release .r-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .badge { font-size: 11px; padding: 3px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); color: var(--muted); }
+    .badge i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .badge.on { color: var(--ok); border-color: rgba(52,214,166,0.4); background: rgba(52,214,166,0.08); }
+    .badge.off { color: var(--warn); border-color: rgba(242,180,76,0.4); background: rgba(242,180,76,0.08); }
+
+    .hero { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 60px 20px; color: var(--muted); }
+    .hero .orbit { width: 96px; height: 96px; margin-bottom: 22px; position: relative; }
+    .hero .orbit span { position: absolute; inset: 0; border-radius: 50%; border: 1px solid var(--border-strong); }
+    .hero .orbit span:nth-child(2) { inset: 16px; opacity: 0.7; }
+    .hero .orbit span:nth-child(3) { inset: 32px; opacity: 0.5; }
+    .hero .orbit .core { position: absolute; inset: 42px; border-radius: 50%; background: linear-gradient(150deg, var(--accent-2), var(--accent)); box-shadow: 0 0 24px var(--accent); border: none; }
+    .hero h3 { color: var(--text); font-size: 16px; font-weight: 600; margin: 0 0 6px; }
+    .hero p { margin: 0; font-size: 13.5px; max-width: 360px; line-height: 1.6; }
+
+    .err { background: rgba(120,30,40,0.32); border: 1px solid rgba(225,80,90,0.5); color: #ffd6da; padding: 13px 15px; border-radius: var(--radius-sm); font-size: 13px; white-space: pre-wrap; }
+
+    /* live status badges + cards */
+    .badge.deployed { color: var(--ok); border-color: rgba(52,214,166,0.4); background: rgba(52,214,166,0.08); }
+    .badge.pending { color: var(--warn); border-color: rgba(242,180,76,0.42); background: rgba(242,180,76,0.08); }
+    .badge.failed { color: #ff8a93; border-color: rgba(225,80,90,0.5); background: rgba(225,80,90,0.1); }
+    .badge.absent { color: var(--faint); }
+    .badge.pending i { animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.25; } }
+    .release.deployed { border-color: rgba(52,214,166,0.4); }
+    .release.failed { border-color: rgba(225,80,90,0.45); }
+
+    .icon-btn {
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--muted);
+      height: 30px; min-width: 34px; padding: 0 9px; border-radius: 8px; cursor: pointer; font-size: 13px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      transition: color 0.18s var(--ease), border-color 0.18s var(--ease);
+    }
+    .icon-btn:hover { color: var(--text); border-color: var(--border-strong); }
+
+    button.go.secondary { background: transparent; color: var(--accent-2); border: 1px solid var(--border-strong); box-shadow: none; margin-top: 10px; }
+    button.go.secondary:hover { background: var(--accent-soft); transform: none; box-shadow: none; filter: none; }
+    button.go.secondary.live { color: var(--ok); border-color: rgba(52,214,166,0.5); background: rgba(52,214,166,0.08); }
+    .plan-head .chip.live { color: var(--ok); border-color: rgba(52,214,166,0.4); }
+    .plan-head .chip.live i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); margin-right: 6px; animation: pulse 1.2s ease-in-out infinite; }
+
+    /* light theme */
+    body.light {
+      --bg-0: #eaf0f8; --bg-1: #f5f9ff; --bg-2: #ffffff;
+      --surface: rgba(255, 255, 255, 0.82); --surface-solid: #ffffff;
+      --border: rgba(20, 55, 110, 0.15); --border-strong: rgba(18, 80, 145, 0.3);
+      --text: #0b1f3a; --muted: #46597a; --faint: #6a7d9d; --faint2: #8093b1;
+      --accent: #0e7ec0; --accent-2: #1397dd; --accent-soft: rgba(14, 126, 192, 0.12);
+      --shadow: 0 18px 44px -24px rgba(20, 50, 100, 0.32);
+      background:
+        radial-gradient(1100px 600px at 80% -10%, rgba(20, 150, 220, 0.12), transparent 60%),
+        radial-gradient(900px 520px at 5% 110%, rgba(70, 170, 230, 0.08), transparent 55%),
+        linear-gradient(160deg, #f4f8ff 0%, #e9f1fb 60%, #e1ebf7 100%);
+      background-color: var(--bg-0);
+    }
+    body.light .field input, body.light .field textarea { background: rgba(255,255,255,0.8); }
+    body.light .field input:focus, body.light .field textarea:focus { background: #ffffff; }
+    body.light .field .hint code, body.light .badge { background: rgba(20,55,110,0.05); }
+    body.light .release { background: rgba(255,255,255,0.72); }
+    body.light .rail .node { background: linear-gradient(150deg, rgba(20,150,220,0.18), rgba(255,255,255,0.55)); }
+    body.light .icon-btn { background: rgba(20,55,110,0.05); }
+
+    @media (max-width: 880px) {
+      main { grid-template-columns: 1fr; }
+      .config { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <h2 class="sr-only">helm-spray: configure a deployment and view its weight-ordered plan.</h2>
+
+  <header class="topbar">
+    <div class="logo">
+      <div class="mark" aria-hidden="true"></div>
+      <h1>helm<b>-</b>spray</h1>
+    </div>
+    <span class="tagline">weight-ordered umbrella deployment</span>
+    <span class="spacer"></span>
+    <span class="pill" id="sprayver" title="helm-spray version"><span class="dot"></span> spray</span>
+    <span class="pill" id="helmver" title="helm host version">Helm …</span>
+    <button class="icon-btn" id="theme" type="button" aria-label="Toggle light or dark theme" title="Toggle light/dark">☀</button>
+  </header>
+
+  <main>
+    <section class="panel config">
+      <h2>Configuration</h2>
+      <form id="form" autocomplete="off">
+        <div class="field">
+          <label for="chart">Umbrella chart</label>
+          <input id="chart" name="chart" placeholder="./path/to/umbrella-chart" required />
+          <div class="hint">A local chart path (file or directory). Remote <code>repo/chart</code> and <code>oci://</code> references are handled by the <code>helm spray</code> CLI.</div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="namespace">Namespace</label>
+            <input id="namespace" name="namespace" placeholder="default" />
+          </div>
+          <div class="field">
+            <label for="prefix">Release prefix</label>
+            <input id="prefix" name="prefix" placeholder="none" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="targets">Targets</label>
+          <input id="targets" name="targets" placeholder="all sub-charts (comma-separated)" />
+        </div>
+        <div class="field">
+          <label for="excludes">Excludes</label>
+          <input id="excludes" name="excludes" placeholder="none (comma-separated)" />
+        </div>
+        <div class="field">
+          <label for="set">Set values</label>
+          <textarea id="set" name="set" placeholder="tags.front-end=true&#10;one key=value per line"></textarea>
+        </div>
+        <label class="check"><input type="checkbox" id="prefixNs" /><span>Prefix releases with namespace</span></label>
+        <button type="submit" class="go" id="go"><span id="go-label">Visualise plan</span></button>
+        <button type="button" class="go secondary" id="live"><span id="live-label">Watch live status</span></button>
+        <div class="hint" style="margin-top:10px">Live status is read-only: it polls the cluster and colours the plan as each release reports its Helm status. Deploying is done by the <code>helm spray</code> CLI.</div>
+      </form>
+    </section>
+
+    <section class="panel canvas" id="canvas" aria-live="polite"></section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const splitList = (v) => v.split(",").map((s) => s.trim()).filter(Boolean);
+    const splitLines = (v) => v.split("\n").map((s) => s.trim()).filter(Boolean);
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    const EXAMPLE = {
+      chart: "./skyward-atc",
+      namespace: "default",
+      tiers: [
+        { weight: 0, releases: [
+          { release: "flightdb", subChart: "flightdb", appVersion: "16", targeted: true, allowedByTags: true },
+          { release: "telemetry-bus", subChart: "telemetry-bus", appVersion: "2", targeted: true, allowedByTags: true } ] },
+        { weight: 1, releases: [
+          { release: "radar-ingest", subChart: "radar-ingest", appVersion: "1.0", targeted: true, allowedByTags: true },
+          { release: "flight-plan-service", subChart: "flight-plan-service", appVersion: "1.0", targeted: true, allowedByTags: true } ] },
+        { weight: 2, releases: [
+          { release: "conflict-detection", subChart: "conflict-detection", appVersion: "1.0", targeted: true, allowedByTags: true },
+          { release: "arrival-sequencer", subChart: "arrival-sequencer", appVersion: "1.0", targeted: false, allowedByTags: true } ] },
+        { weight: 3, releases: [
+          { release: "controller-gateway", subChart: "controller-gateway", appVersion: "1.0", targeted: true, allowedByTags: true },
+          { release: "controller-ui", subChart: "controller-ui", appVersion: "1.0", targeted: true, allowedByTags: false } ] },
+      ],
+    };
+
+    function renderHeroError(msg) {
+      $("canvas").innerHTML = '<div class="err">' + esc(msg) + "</div>";
+    }
+
+    function statusBadge(name, statuses) {
+      if (!statuses) return "";
+      const s = statuses[name];
+      if (!s || !s.status) return '<span class="badge absent"><i></i>not deployed</span>';
+      const v = String(s.status).toLowerCase();
+      let cls = "pending";
+      if (v.indexOf("fail") >= 0) cls = "failed";
+      else if (v.indexOf("deployed") >= 0) cls = "deployed";
+      else if (v.indexOf("pending") >= 0 || v.indexOf("install") >= 0 || v.indexOf("progress") >= 0) cls = "pending";
+      return '<span class="badge ' + cls + '"><i></i>' + esc(s.status) + "</span>";
+    }
+
+    function releaseCard(r, i, statuses) {
+      const live = r.targeted && r.allowedByTags;
+      let sub = r.subChart + (r.alias ? " (alias " + r.alias + ")" : "");
+      if (r.appVersion) sub += " · v" + r.appVersion;
+      const tBadge = '<span class="badge ' + (r.targeted ? "on" : "off") + '"><i></i>' + (r.targeted ? "targeted" : "not targeted") + "</span>";
+      const gBadge = '<span class="badge ' + (r.allowedByTags ? "on" : "off") + '"><i></i>' + (r.allowedByTags ? "tags ok" : "tag-excluded") + "</span>";
+      const sBadge = statusBadge(r.release, statuses);
+      let cls = "release " + (live ? "" : "skip");
+      const st = statuses && statuses[r.release];
+      if (st && st.status) {
+        const v = String(st.status).toLowerCase();
+        if (v.indexOf("fail") >= 0) cls += " failed";
+        else if (v.indexOf("deployed") >= 0) cls += " deployed";
+      }
+      return (
+        '<div class="' + cls + '" data-release="' + esc(r.release) + '" style="animation-delay:' + (i * 55) + 'ms">' +
+        '<div class="r-top"><div class="r-ico">◇</div><div><div class="r-name">' + esc(r.release) + "</div>" +
+        '<div class="r-sub">' + esc(sub) + "</div></div></div>" +
+        '<div class="badges">' + tBadge + gBadge + '<span class="s-slot">' + sBadge + "</span></div></div>"
+      );
+    }
+
+    function renderPlan(plan, isExample, statuses) {
+      const tiers = plan.tiers || [];
+      let h = '<div class="plan-head"><span class="title">' + esc(plan.chart) + "</span>" +
+        '<span class="chip">namespace <b>' + esc(plan.namespace) + "</b></span>" +
+        '<span class="chip"><b>' + tiers.length + "</b> weight tier" + (tiers.length === 1 ? "" : "s") + "</span>";
+      if (isExample) h += '<span class="chip example">example</span>';
+      if (statuses) h += '<span class="chip live"><i></i>live</span>';
+      h += "</div>";
+      if (!tiers.length) { h += '<div class="hero"><h3>No sub-charts found</h3><p>This umbrella chart declares no dependencies.</p></div>'; $("canvas").innerHTML = h; return; }
+      h += '<div class="timeline">';
+      let idx = 0;
+      for (const t of tiers) {
+        h += '<div class="tier"><div class="rail"><div class="node"><span class="w">' + esc(t.weight) + '</span><span class="lbl">weight</span></div><div class="line"></div></div><div class="releases">';
+        for (const r of (t.releases || [])) h += releaseCard(r, idx++, statuses);
+        h += "</div></div>";
+      }
+      h += "</div>";
+      $("canvas").innerHTML = h;
+    }
+
+    function readForm() {
+      return {
+        chart: $("chart").value.trim(),
+        namespace: $("namespace").value.trim(),
+        prefixReleases: $("prefix").value.trim(),
+        prefixReleasesWithNamespace: $("prefixNs").checked,
+        targets: splitList($("targets").value),
+        excludes: splitList($("excludes").value),
+        set: splitLines($("set").value),
+      };
+    }
+
+    $("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      stopLive();
+      const btn = $("go");
+      btn.disabled = true;
+      $("go-label").textContent = "Resolving";
+      btn.insertAdjacentHTML("afterbegin", '<span class="spinner"></span>');
+      try {
+        const resp = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(readForm()) });
+        const data = await resp.json();
+        if (!resp.ok) { renderHeroError(data.error || ("request failed: " + resp.status)); return; }
+        renderPlan(data, false);
+      } catch (err) {
+        renderHeroError(String(err));
+      } finally {
+        btn.disabled = false;
+        const sp = btn.querySelector(".spinner"); if (sp) sp.remove();
+        $("go-label").textContent = "Visualise plan";
+      }
+    });
+
+    // Live status: poll /api/status (read-only) and colour the plan as releases
+    // reach their helm status. The actual deploy is performed by the CLI.
+    // Track what structure is currently mounted so live polling can patch the
+    // status badges in place instead of re-rendering (and re-animating) the whole
+    // plan every cycle, which would flicker.
+    let rendered = null;
+    function planSig(plan) {
+      return (plan.chart || "") + "|" + (plan.namespace || "") + "|" +
+        (plan.tiers || []).map((t) => t.weight + ":" + (t.releases || []).map((r) => r.release).join(",")).join(";");
+    }
+    // applyStatuses updates only the status badge and deployed/failed class of each
+    // already-mounted card, so the live view refreshes without re-mounting the DOM.
+    function applyStatuses(statuses) {
+      document.querySelectorAll(".release[data-release]").forEach((el) => {
+        const name = el.getAttribute("data-release");
+        const slot = el.querySelector(".s-slot");
+        if (slot) slot.innerHTML = statusBadge(name, statuses);
+        el.classList.remove("deployed", "failed");
+        const st = statuses && statuses[name];
+        if (st && st.status) {
+          const v = String(st.status).toLowerCase();
+          if (v.indexOf("fail") >= 0) el.classList.add("failed");
+          else if (v.indexOf("deployed") >= 0) el.classList.add("deployed");
+        }
+      });
+    }
+    // showPlan mounts the plan once, then patches statuses on subsequent polls of
+    // the same structure — only re-rendering when the structure (or live/plan-only
+    // mode) actually changes.
+    function showPlan(plan, statuses) {
+      const sig = planSig(plan);
+      const wantStatus = !!statuses;
+      if (!rendered || rendered.sig !== sig || rendered.hasStatuses !== wantStatus) {
+        renderPlan(plan, false, statuses);
+        rendered = { sig: sig, hasStatuses: wantStatus };
+      } else if (wantStatus) {
+        applyStatuses(statuses);
+      }
+    }
+
+    let liveTimer = null;
+    async function pollLive() {
+      const body = JSON.stringify(readForm());
+      try {
+        const resp = await fetch("/api/status", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        if (resp.ok) {
+          const data = await resp.json();
+          showPlan(data.plan, data.releases || {});
+          return;
+        }
+        // Live status needs the cluster. If it is unavailable but the chart is
+        // valid, fall back to the cluster-free plan so the structure still shows,
+        // and keep polling so it lights up once releases appear.
+        const liveErr = (await resp.json()).error || ("request failed: " + resp.status);
+        const planResp = await fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        if (planResp.ok) showPlan(await planResp.json(), null);
+        else { renderHeroError(liveErr); stopLive(); }
+      } catch (err) {
+        renderHeroError(String(err)); stopLive();
+      }
+    }
+    function stopLive() {
+      if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+      rendered = null;
+      $("live").classList.remove("live");
+      $("live-label").textContent = "Watch live status";
+    }
+    function startLive() {
+      if (!$("chart").value.trim()) { renderHeroError("Enter an umbrella chart to watch its live status."); return; }
+      $("live").classList.add("live");
+      $("live-label").textContent = "Stop watching";
+      pollLive();
+      liveTimer = setInterval(pollLive, 2500);
+    }
+    $("live").addEventListener("click", () => { liveTimer ? stopLive() : startLive(); });
+
+    // Theme toggle (persisted across sessions).
+    function applyTheme(t) {
+      document.body.classList.toggle("light", t === "light");
+      $("theme").textContent = t === "light" ? "☾" : "☀";
+    }
+    (function initTheme() {
+      let t = "dark";
+      try { t = localStorage.getItem("hs-theme") || "dark"; } catch (e) {}
+      applyTheme(t);
+      $("theme").addEventListener("click", () => {
+        const next = document.body.classList.contains("light") ? "dark" : "light";
+        applyTheme(next);
+        try { localStorage.setItem("hs-theme", next); } catch (e) {}
+      });
+    })();
+
+    // Version indicator: which helm-spray and which helm host is in effect.
+    (async function loadVersion() {
+      try {
+        const resp = await fetch("/api/version");
+        const v = await resp.json();
+        $("helmver").textContent = v.helm ? "Helm " + v.helm : "Helm not found";
+        if (v.spray) $("sprayver").innerHTML = '<span class="dot"></span> spray ' + esc(v.spray);
+      } catch (e) {
+        $("helmver").textContent = "Helm n/a";
+      }
+    })();
+
+    // If the CLI launched the UI for a specific chart (helm spray ui ./chart),
+    // open pre-configured and begin showing live status; otherwise show an
+    // illustrative example so the canvas is never empty.
+    (async function init() {
+      try {
+        const cfg = await (await fetch("/api/config")).json();
+        if (cfg && cfg.chart) {
+          $("chart").value = cfg.chart;
+          $("namespace").value = cfg.namespace || "";
+          $("prefix").value = cfg.prefixReleases || "";
+          $("prefixNs").checked = !!cfg.prefixReleasesWithNamespace;
+          $("targets").value = (cfg.targets || []).join(", ");
+          $("excludes").value = (cfg.excludes || []).join(", ");
+          $("set").value = (cfg.set || []).join("\n");
+          startLive();
+          return;
+        }
+      } catch (e) { /* fall through to the example */ }
+      renderPlan(EXAMPLE, true);
+    })();
+  </script>
+</body>
+</html>

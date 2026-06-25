@@ -1,28 +1,51 @@
 name: Release on github
+
 on:
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
 jobs:
   build:
     name: Make release
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Go
-        uses: actions/setup-go@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-          path: ${{ github.workspace }}/src/github.com/gemalto/helm-spray
+          go-version: "1.26"
       - name: Make release
+        run: make dist
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: _dist/helm-spray.sbom.spdx.json
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign checksums (keyless)
         run: |
-          cd ${{ github.workspace }}/src/github.com/gemalto/helm-spray
-          make dist
+          cosign sign-blob --yes \
+            --output-signature _dist/SHA256SUMS.sig \
+            --output-certificate _dist/SHA256SUMS.pem \
+            _dist/SHA256SUMS
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: '_dist/helm-spray-*.tar.gz'
       - name: Publish release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           prerelease: false
-          files: ${{ github.workspace }}/src/github.com/gemalto/helm-spray/_dist/helm-spray*
+          files: |
+            _dist/helm-spray-*.tar.gz
+            _dist/SHA256SUMS
+            _dist/SHA256SUMS.sig
+            _dist/SHA256SUMS.pem
+            _dist/helm-spray.sbom.spdx.json
