@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ThalesGroup/helm-spray/v4/internal/log"
@@ -82,6 +83,14 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// isRemoteRef reports whether s is a remote chart or value-file reference that the
+// read-only web UI must not fetch server-side.
+func isRemoteRef(s string) bool {
+	return strings.HasPrefix(s, "http://") ||
+		strings.HasPrefix(s, "https://") ||
+		strings.HasPrefix(s, "oci://")
+}
+
 // sprayFromRequest decodes and validates a planRequest and builds the
 // corresponding Spray. On any problem it writes the error response and returns
 // ok=false, so callers can simply `return`.
@@ -99,6 +108,19 @@ func sprayFromRequest(w http.ResponseWriter, r *http.Request) (*helmspray.Spray,
 	if req.Chart == "" {
 		writeError(w, http.StatusBadRequest, "a chart is required")
 		return nil, false
+	}
+	// The web UI previews local charts only. Reject remote chart references and
+	// remote value-file URLs so the server cannot be coerced into fetching
+	// arbitrary URLs on the caller's behalf (SSRF).
+	if isRemoteRef(req.Chart) {
+		writeError(w, http.StatusBadRequest, "the web UI previews local charts only; use the 'helm spray' CLI for remote chart references")
+		return nil, false
+	}
+	for _, vf := range req.ValueFiles {
+		if isRemoteRef(vf) {
+			writeError(w, http.StatusBadRequest, "remote value-file URLs are not allowed from the web UI; pass local files")
+			return nil, false
+		}
 	}
 	if len(req.Targets) > 0 && len(req.Excludes) > 0 {
 		writeError(w, http.StatusBadRequest, "cannot use both targets and excludes together")

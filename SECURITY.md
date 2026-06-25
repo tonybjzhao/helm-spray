@@ -2,12 +2,12 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest `4.x` release of helm-spray.
+Security fixes are provided for the latest `5.x` release of helm-spray.
 
 | Version | Supported |
 |---------|-----------|
-| 4.x     | ✅        |
-| < 4.0   | ❌        |
+| 5.x     | ✅        |
+| < 5.0   | ❌        |
 
 ## Reporting a vulnerability
 

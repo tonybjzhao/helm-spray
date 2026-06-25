@@ -105,6 +105,30 @@ func TestStatusAPIRejectsGet(t *testing.T) {
 	}
 }
 
+func TestPlanAPIRejectsRemoteChart(t *testing.T) {
+	srv := newServer(t)
+	resp, err := http.Post(srv.URL+"/api/plan", "application/json", strings.NewReader(`{"chart":"https://evil.example/c.tgz"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a remote chart reference must be rejected; status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestPlanAPIRejectsRemoteValueFile(t *testing.T) {
+	srv := newServer(t)
+	resp, err := http.Post(srv.URL+"/api/plan", "application/json", strings.NewReader(`{"chart":"./local","valueFiles":["http://evil.example/v.yaml"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a remote value-file URL must be rejected; status = %d, want 400", resp.StatusCode)
+	}
+}
+
 func TestIsLoopback(t *testing.T) {
 	cases := map[string]bool{
 		"localhost": true, "127.0.0.1": true, "::1": true,

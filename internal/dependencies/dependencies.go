@@ -40,6 +40,13 @@ func Get(chart *chart.Chart, values *common.Values, targets []string, excludes [
 	// Compute tags
 	providedTags := tags(values, verbose)
 
+	// Index sub-chart appVersions by chart name once, so the per-dependency lookup
+	// below is O(1) rather than a nested scan over the built sub-charts.
+	appVersions := make(map[string]string, len(chart.Dependencies()))
+	for _, sub := range chart.Dependencies() {
+		appVersions[sub.Metadata.Name] = sub.Metadata.AppVersion
+	}
+
 	// Build the list of all dependencies, and their key attributes
 	dependencies := make([]Dependency, len(chart.Metadata.Dependencies))
 	for i, req := range chart.Metadata.Dependencies {
@@ -122,13 +129,8 @@ func Get(chart *chart.Chart, values *common.Values, targets []string, excludes [
 		}
 		dependencies[i].CorrespondingReleaseName = releasePrefix + dependencies[i].UsedName
 
-		// Get the AppVersion that is contained in the Chart.yaml file of the dependency sub-chart
-		for _, subChart := range chart.Dependencies() {
-			if subChart.Metadata.Name == dependencies[i].Name {
-				dependencies[i].AppVersion = subChart.Metadata.AppVersion
-				break
-			}
-		}
+		// The sub-chart's AppVersion comes from its own Chart.yaml.
+		dependencies[i].AppVersion = appVersions[dependencies[i].Name]
 	}
 	return dependencies, nil
 }

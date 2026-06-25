@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -140,7 +141,8 @@ func (s *Spray) Spray(ctx context.Context) error {
 	disableAllSet := strings.Join(disabled, ",")
 
 	// Process sub-charts by ascending weight; gate each tier before the next.
-	for weight := 0; weight <= maxWeight(deps); weight++ {
+	// Only the weights that actually occur are visited, computed once up front.
+	for _, weight := range sortedWeights(deps) {
 		tier, shouldWait, err := s.upgrade(ctx, releases, deps, weight, disableAllSet)
 		if err != nil {
 			return err
@@ -359,14 +361,20 @@ func allTrue(b []bool) bool {
 	return true
 }
 
-// maxWeight returns the highest weight among the dependencies.
-func maxWeight(deps []dependencies.Dependency) (m int) {
-	for i, d := range deps {
-		if i == 0 || d.Weight > m {
-			m = d.Weight
+// sortedWeights returns the distinct sub-chart weights in ascending order, so the
+// orchestrator visits exactly the tiers that exist (no scan over empty weights)
+// and computes the set once rather than recomputing the maximum every iteration.
+func sortedWeights(deps []dependencies.Dependency) []int {
+	seen := make(map[int]bool, len(deps))
+	weights := make([]int, 0, len(deps))
+	for _, d := range deps {
+		if !seen[d.Weight] {
+			seen[d.Weight] = true
+			weights = append(weights, d.Weight)
 		}
 	}
-	return m
+	sort.Ints(weights)
+	return weights
 }
 
 func checkTargetsAndExcludes(deps []dependencies.Dependency, targets []string, excludes []string) error {

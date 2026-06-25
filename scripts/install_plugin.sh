@@ -31,7 +31,9 @@ else
     wget -q "${url}" -O "releases/v${version}.tar.gz"
 fi
 
-# Verify the download against the published checksums when possible.
+# Verify the download against the published checksums. A mismatch is fatal; if the
+# checksums cannot be fetched, or do not list this artifact, that is reported on
+# stderr rather than being silently skipped.
 if curl -sSL "${base}/SHA256SUMS" -o "releases/SHA256SUMS" 2>/dev/null || wget -q "${base}/SHA256SUMS" -O "releases/SHA256SUMS" 2>/dev/null; then
     expected=$(grep "$(basename "${url}")" "releases/SHA256SUMS" 2>/dev/null | awk '{print $1}')
     if [ -n "${expected}" ]; then
@@ -42,7 +44,11 @@ if curl -sSL "${base}/SHA256SUMS" -o "releases/SHA256SUMS" 2>/dev/null || wget -
             exit 1
         fi
         echo "Checksum verified."
+    else
+        echo "warning: SHA256SUMS does not list $(basename "${url}"); skipping checksum verification" >&2
     fi
+else
+    echo "warning: could not download ${base}/SHA256SUMS; skipping checksum verification" >&2
 fi
 tar xzf "releases/v${version}.tar.gz" -C "releases/v${version}"
 if [ "${os}" = "Linux" ] || [ "${os}" = "Darwin" ] ; then
