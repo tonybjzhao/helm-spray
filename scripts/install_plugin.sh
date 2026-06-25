@@ -30,6 +30,20 @@ if [ -x "$(which curl 2>/dev/null)" ]; then
 else
     wget -q "${url}" -O "releases/v${version}.tar.gz"
 fi
+
+# Verify the download against the published checksums when possible.
+if curl -sSL "${base}/SHA256SUMS" -o "releases/SHA256SUMS" 2>/dev/null || wget -q "${base}/SHA256SUMS" -O "releases/SHA256SUMS" 2>/dev/null; then
+    expected=$(grep "$(basename "${url}")" "releases/SHA256SUMS" 2>/dev/null | awk '{print $1}')
+    if [ -n "${expected}" ]; then
+        actual=$(sha256sum "releases/v${version}.tar.gz" 2>/dev/null | awk '{print $1}')
+        [ -z "${actual}" ] && actual=$(shasum -a 256 "releases/v${version}.tar.gz" | awk '{print $1}')
+        if [ "${expected}" != "${actual}" ]; then
+            echo "checksum verification failed for $(basename "${url}")" >&2
+            exit 1
+        fi
+        echo "Checksum verified."
+    fi
+fi
 tar xzf "releases/v${version}.tar.gz" -C "releases/v${version}"
 if [ "${os}" = "Linux" ] || [ "${os}" = "Darwin" ] ; then
     mv "releases/v${version}/bin/helm-spray" "bin/helm-spray"

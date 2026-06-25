@@ -11,6 +11,7 @@ build:
 	CGO_ENABLED=0 go build $(GOFLAGS) -o bin/helm-spray -ldflags "$(LDFLAGS)" .
 
 dist: dist_darwin dist_linux dist_windows
+	cd $(DIST) && (sha256sum helm-spray-*.tar.gz 2>/dev/null || shasum -a 256 helm-spray-*.tar.gz) > SHA256SUMS
 
 dist_darwin:
 	$(MAKE) package GOOS=darwin GOARCH=amd64 BIN=helm-spray

@@ -23,4 +23,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           prerelease: false
-          files: _dist/helm-spray*
+          files: |
+            _dist/helm-spray*
+            _dist/SHA256SUMS
