@@ -100,10 +100,22 @@ func statefulSetReady(s *appsv1.StatefulSet) bool {
 	if s.Status.ObservedGeneration < s.Generation {
 		return false
 	}
-	if s.Status.UpdatedReplicas < desired || s.Status.ReadyReplicas < desired {
+	if s.Status.ReadyReplicas < desired {
 		return false
 	}
-	// During a rolling update the current and update revisions differ.
+	// With the OnDelete update strategy the controller does not roll pods
+	// automatically: it waits for an operator to delete them. The updated-replica
+	// count and the current/update revisions therefore never converge on their
+	// own after a spec change, so gating on them would wait out the whole timeout.
+	// Readiness for OnDelete is based on ready replicas alone.
+	if s.Spec.UpdateStrategy.Type == appsv1.OnDeleteStatefulSetStrategyType {
+		return true
+	}
+	if s.Status.UpdatedReplicas < desired {
+		return false
+	}
+	// During a RollingUpdate the current and update revisions differ until the
+	// rollout completes.
 	if s.Status.UpdateRevision != "" && s.Status.CurrentRevision != s.Status.UpdateRevision {
 		return false
 	}

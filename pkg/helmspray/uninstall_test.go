@@ -63,6 +63,26 @@ func TestUninstallTargeted(t *testing.T) {
 	}
 }
 
+func TestSprayHooksOnlySubchartSucceeds(t *testing.T) {
+	// A sub-chart whose only resources are helm hooks renders an empty .manifest
+	// (helm reports hooks separately), so the tier has no workloads to gate on.
+	// The spray must still complete (issue #13). The readiness checker is set to
+	// never-ready to prove it is not consulted for an empty tier.
+	fh := &fakeHelm{manifests: map[string]string{"alpha": ""}}
+	s := &Spray{
+		ChartName:  "testdata/umbrella",
+		Namespace:  "ns",
+		Targets:    []string{"alpha"},
+		Timeout:    30,
+		helmClient: fh,
+		readiness:  &fakeReadiness{notReady: true},
+	}
+
+	if err := s.Spray(context.Background()); err != nil {
+		t.Fatalf("spray of a hooks-only sub-chart should succeed, got %v", err)
+	}
+}
+
 func TestSprayPruneRemovesOrphans(t *testing.T) {
 	fh := &fakeHelm{
 		releases: map[string]helm.Release{

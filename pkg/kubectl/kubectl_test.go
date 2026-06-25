@@ -57,6 +57,32 @@ func TestStatefulSetReady(t *testing.T) {
 	}
 }
 
+func TestStatefulSetReadyOnDelete(t *testing.T) {
+	// With the OnDelete update strategy the controller never rolls pods on its
+	// own, so revisions and updated-replica counts do not converge after a spec
+	// change. Readiness must rely on ready replicas alone (issue #58), otherwise
+	// the wait would never finish.
+	onDelete := appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Generation: 2},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas:       i32(2),
+			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{Type: appsv1.OnDeleteStatefulSetStrategyType},
+		},
+		Status: appsv1.StatefulSetStatus{
+			ObservedGeneration: 2, ReadyReplicas: 2, UpdatedReplicas: 1,
+			CurrentRevision: "rev1", UpdateRevision: "rev2",
+		},
+	}
+	if !statefulSetReady(&onDelete) {
+		t.Error("OnDelete statefulset with all replicas ready should be ready despite unconverged revisions")
+	}
+	notReady := *onDelete.DeepCopy()
+	notReady.Status.ReadyReplicas = 1
+	if statefulSetReady(&notReady) {
+		t.Error("OnDelete statefulset with missing ready replicas should not be ready")
+	}
+}
+
 func TestJobReady(t *testing.T) {
 	complete := batchv1.Job{Spec: batchv1.JobSpec{Completions: i32(2)}, Status: batchv1.JobStatus{Succeeded: 2}}
 	if ready, failed := jobReady(&complete); !ready || failed {
