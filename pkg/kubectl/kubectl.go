@@ -1,5 +1,3 @@
-package kubectl
-
 /*
 (c) Copyright 2018, Gemalto. All rights reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,130 +11,178 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package kubectl wraps the kubectl command-line interface to determine when the
+// workloads created by a release have become ready. It queries each workload
+// kind once as JSON and evaluates readiness from the decoded Kubernetes objects,
+// rather than embedding workload names into go-templates.
+package kubectl
+
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
-	"strings"
 
 	"github.com/gemalto/helm-spray/v4/internal/log"
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 )
 
-func GetDeployments(namespace string) ([]string, error) {
-	return getWorkloads("deployments", namespace)
-}
-
-func GetStatefulSets(namespace string) ([]string, error) {
-	return getWorkloads("statefulsets", namespace)
-}
-
-func GetJobs(namespace string) ([]string, error) {
-	return getWorkloads("jobs", namespace)
-}
-
+// AreDeploymentsReady reports whether every named Deployment in the namespace
+// has completed its rollout. A name that does not (yet) exist is treated as not
+// ready so the caller keeps waiting.
 func AreDeploymentsReady(names []string, namespace string, debug bool) (bool, error) {
-	return areWorkloadsReady("deployment", names, namespace, debug)
+	var list appsv1.DeploymentList
+	if err := getList(namespace, "deployments", debug, &list); err != nil {
+		return false, err
+	}
+	return allReady(names, list.Items,
+		func(d *appsv1.Deployment) string { return d.Name },
+		func(d *appsv1.Deployment) (bool, error) { return deploymentReady(d), nil })
 }
 
+// AreStatefulSetsReady reports whether every named StatefulSet has completed its
+// rollout.
 func AreStatefulSetsReady(names []string, namespace string, debug bool) (bool, error) {
-	return areWorkloadsReady("statefulset", names, namespace, debug)
+	var list appsv1.StatefulSetList
+	if err := getList(namespace, "statefulsets", debug, &list); err != nil {
+		return false, err
+	}
+	return allReady(names, list.Items,
+		func(s *appsv1.StatefulSet) string { return s.Name },
+		func(s *appsv1.StatefulSet) (bool, error) { return statefulSetReady(s), nil })
 }
 
+// AreDaemonSetsReady reports whether every named DaemonSet has rolled out to all
+// scheduled nodes.
+func AreDaemonSetsReady(names []string, namespace string, debug bool) (bool, error) {
+	var list appsv1.DaemonSetList
+	if err := getList(namespace, "daemonsets", debug, &list); err != nil {
+		return false, err
+	}
+	return allReady(names, list.Items,
+		func(d *appsv1.DaemonSet) string { return d.Name },
+		func(d *appsv1.DaemonSet) (bool, error) { return daemonSetReady(d), nil })
+}
+
+// AreJobsReady reports whether every named Job has reached its required number of
+// successful completions. If a Job has definitively failed it returns an error so
+// the caller fails fast instead of waiting out the whole timeout.
 func AreJobsReady(names []string, namespace string, debug bool) (bool, error) {
-	for _, name := range names {
-		cmd := exec.Command("kubectl", "--namespace", namespace, "get", "job", name, "--output=jsonpath={.status.succeeded}")
-		cmd.Stderr = os.Stderr
-		result, err := cmd.Output()
+	var list batchv1.JobList
+	if err := getList(namespace, "jobs", debug, &list); err != nil {
+		return false, err
+	}
+	return allReady(names, list.Items,
+		func(j *batchv1.Job) string { return j.Name },
+		func(j *batchv1.Job) (bool, error) {
+			ready, failed := jobReady(j)
+			if failed {
+				return false, fmt.Errorf("job %q failed", j.Name)
+			}
+			return ready, nil
+		})
+}
+
+func deploymentReady(d *appsv1.Deployment) bool {
+	desired := desiredReplicas(d.Spec.Replicas)
+	return d.Status.ObservedGeneration >= d.Generation &&
+		d.Status.UpdatedReplicas >= desired &&
+		d.Status.ReadyReplicas >= desired &&
+		d.Status.AvailableReplicas >= desired
+}
+
+func statefulSetReady(s *appsv1.StatefulSet) bool {
+	desired := desiredReplicas(s.Spec.Replicas)
+	if s.Status.ObservedGeneration < s.Generation {
+		return false
+	}
+	if s.Status.UpdatedReplicas < desired || s.Status.ReadyReplicas < desired {
+		return false
+	}
+	// During a rolling update the current and update revisions differ.
+	if s.Status.UpdateRevision != "" && s.Status.CurrentRevision != s.Status.UpdateRevision {
+		return false
+	}
+	return true
+}
+
+func daemonSetReady(d *appsv1.DaemonSet) bool {
+	return d.Status.ObservedGeneration >= d.Generation &&
+		d.Status.UpdatedNumberScheduled >= d.Status.DesiredNumberScheduled &&
+		d.Status.NumberReady >= d.Status.DesiredNumberScheduled &&
+		d.Status.NumberUnavailable == 0
+}
+
+// jobReady reports whether a Job has reached its required successful completions,
+// and separately whether it has definitively failed.
+func jobReady(j *batchv1.Job) (ready bool, failed bool) {
+	for _, c := range j.Status.Conditions {
+		if c.Type == batchv1.JobFailed && c.Status == corev1.ConditionTrue {
+			return false, true
+		}
+	}
+	completions := int32(1)
+	if j.Spec.Completions != nil {
+		completions = *j.Spec.Completions
+	}
+	return j.Status.Succeeded >= completions, false
+}
+
+func desiredReplicas(r *int32) int32 {
+	if r == nil {
+		return 1
+	}
+	return *r
+}
+
+// allReady returns true only if every requested name is present among items and
+// satisfies ready. A requested name that is absent yields (false, nil) so the
+// caller keeps polling until the workload appears.
+func allReady[T any](names []string, items []T, name func(*T) string, ready func(*T) (bool, error)) (bool, error) {
+	for _, n := range names {
+		var match *T
+		for i := range items {
+			if name(&items[i]) == n {
+				match = &items[i]
+				break
+			}
+		}
+		if match == nil {
+			return false, nil
+		}
+		ok, err := ready(match)
 		if err != nil {
-			// Cannot make the difference between an error when calling kubectl and no corresponding resource found. Return "" in any case.
 			return false, err
 		}
-		strResult := string(result)
-		if debug {
-			log.Info(3, "kubectl output: %s", strResult)
-		}
-		succeeded, _ := strconv.Atoi(strResult)
-		if succeeded < 1 {
-			if debug {
-				log.Info(3, "job %s is not completed", name)
-			}
+		if !ok {
 			return false, nil
 		}
 	}
 	return true, nil
 }
 
-func getWorkloads(k8sObjectType string, namespace string) ([]string, error) {
-	cmd := exec.Command("kubectl", "--namespace", namespace, "get", k8sObjectType, "--output=jsonpath={.items..metadata.name}")
+// getList runs "kubectl get <resource> -o json" in the namespace and decodes the
+// result into the provided typed list.
+func getList(namespace, resource string, debug bool, into interface{}) error {
+	args := []string{"--namespace", namespace, "get", resource, "-o", "json"}
+	if debug {
+		log.Info(3, "running kubectl command: %v", args)
+	}
+	cmd := exec.Command("kubectl", args...) // #nosec G204 -- fixed "kubectl get" subcommand; namespace/resource are argv elements, not a shell
+	out := &bytes.Buffer{}
+	cmd.Stdout = out
 	cmd.Stderr = os.Stderr
-	result, err := cmd.Output()
-	if err != nil {
-		// Cannot make the difference between an error when calling kubectl and no corresponding resource found. Return "" in any case.
-		return nil, err
-	}
-	return strings.Split(string(result), " "), nil
-}
-
-func areWorkloadsReady(k8sObjectType string, names []string, namespace string, debug bool) (bool, error) {
-	if len(names) == 0 {
-		return true, nil
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("running kubectl get %s in namespace %q: %w", resource, namespace, err)
 	}
 	if debug {
-		template := generateTemplate(names, "{{$ready := 0}}{{if .status.readyReplicas}}{{$ready = .status.readyReplicas}}{{end}}{{$current := .spec.replicas}}{{if .status.currentReplicas}}{{$current = .status.currentReplicas}}{{end}}{{$updated := 0}}{{if .status.updatedReplicas}}{{$updated = .status.updatedReplicas}}{{end}}{{printf \"{name: %s, ready: %d, current: %d, updated: %d}\" .metadata.name $ready $current $updated}}")
-		log.Info(3, "kubectl template: %s", template)
-		cmd := exec.Command("kubectl", "--namespace", namespace, "get", k8sObjectType, "-o", "go-template="+template)
-		cmd.Stderr = os.Stderr
-		result, err := cmd.Output()
-		if err != nil {
-			// Activating debug logs should not generate additional errors so let's only warn the user and go further
-			// If there is a real error linked to kubectl execution, it will pop up just after
-			log.Info(3, "warning: cannot get kubectl output because of an error (%s)", err)
-		} else {
-			log.Info(3, "kubectl output: %s", string(result))
-		}
+		log.Info(3, "kubectl output: %s", out.String())
 	}
-	template := generateTemplate(names, "{{$ready := 0}}{{if .status.readyReplicas}}{{$ready = .status.readyReplicas}}{{end}}{{$current := .spec.replicas}}{{if .status.currentReplicas}}{{$current = .status.currentReplicas}}{{end}}{{$updated := 0}}{{if .status.updatedReplicas}}{{$updated = .status.updatedReplicas}}{{end}}{{if or (lt $ready .spec.replicas) (lt $current .spec.replicas) (lt $updated .spec.replicas)}}{{printf \"%s \" .metadata.name}}{{end}}")
-	if debug {
-		log.Info(3, "kubectl template: %s", template)
+	if err := json.Unmarshal(out.Bytes(), into); err != nil {
+		return fmt.Errorf("parsing kubectl get %s output: %w", resource, err)
 	}
-	cmd := exec.Command("kubectl", "--namespace", namespace, "get", k8sObjectType, "-o", "go-template="+template)
-	cmd.Stderr = os.Stderr
-	result, err := cmd.Output()
-	if err != nil {
-		// Cannot make the difference between an error when calling kubectl and no corresponding resource found. Return false in any case.
-		return false, err
-	}
-	strResult := string(result)
-	if debug {
-		log.Info(3, "kubectl output: %s", strResult)
-	}
-	if len(strResult) > 0 {
-		return false, nil
-	}
-	return true, nil
-}
-
-func generateTemplate(names []string, test string) string {
-	var sb strings.Builder
-	sb.WriteString("{{range .items}}")
-	sb.WriteString("{{if ")
-	if len(names) == 1 {
-		sb.WriteString("eq \"")
-		sb.WriteString(names[0])
-		sb.WriteString("\" .metadata.name")
-	} else {
-		sb.WriteString("or ")
-		for _, object := range names {
-			sb.WriteString("(")
-			sb.WriteString("eq \"")
-			sb.WriteString(object)
-			sb.WriteString("\" .metadata.name")
-			sb.WriteString(") ")
-		}
-	}
-	sb.WriteString("}}")
-	sb.WriteString(test)
-	sb.WriteString("{{end}}")
-	sb.WriteString("{{end}}")
-	return sb.String()
+	return nil
 }
