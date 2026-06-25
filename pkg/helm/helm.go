@@ -183,6 +183,17 @@ func List(ctx context.Context, namespace string, debug bool) (map[string]Release
 	return releasesMap, nil
 }
 
+// HostVersion returns the version string of the helm CLI that helm-spray drives
+// (for example "v4.2.2"), as reported by "helm version". It is used by the web UI
+// to show which helm host is in effect.
+func HostVersion(ctx context.Context) (string, error) {
+	out, err := run(ctx, []string{"version", "--template", "{{.Version}}"})
+	if err != nil {
+		return "", fmt.Errorf("running helm version: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // UpgradeWithValues runs "helm upgrade --install" for a single release and
 // returns the parsed JSON result (release info and rendered manifest).
 func UpgradeWithValues(ctx context.Context, req UpgradeRequest) (UpgradedRelease, error) {

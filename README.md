@@ -227,7 +227,16 @@ $ helm spray ui --address 127.0.0.1:8080
 ```
 
 Open the address, enter an umbrella chart and options, and the UI renders the
-ordered weight tiers and the per-release targeting/tag status.
+ordered weight tiers and the per-release targeting/tag status. The header shows
+the helm-spray version and the **helm host version** it would drive, and a
+light/dark toggle is available.
+
+Click **Watch live status** to poll the cluster (read-only) and watch the plan
+colour in as each release reports its helm status — grey for not-yet-deployed,
+amber while pending, green when deployed, red on failure. The UI never mutates
+the cluster: deploying, uninstalling, and pruning are performed by the
+`helm spray` CLI, which keeps a single, well-tested execution path and avoids
+exposing a cluster-mutating endpoint on an unauthenticated local server.
 
 ## Uninstall and prune
 

@@ -13,12 +13,17 @@ import (
 	"time"
 
 	"github.com/ThalesGroup/helm-spray/v4/internal/log"
+	"github.com/ThalesGroup/helm-spray/v4/pkg/helm"
 	"github.com/ThalesGroup/helm-spray/v4/pkg/helmspray"
 	cliValues "helm.sh/helm/v4/pkg/cli/values"
 )
 
-// maxRequestBody bounds the size of a /api/plan request body.
+// maxRequestBody bounds the size of an API request body.
 const maxRequestBody = 1 << 20 // 1 MiB
+
+// Version is the helm-spray version displayed in the UI. The command layer sets
+// it at start-up so the binary and the UI report the same version.
+var Version = "SNAPSHOT"
 
 //go:embed web
 var webFS embed.FS
@@ -45,6 +50,8 @@ func Handler() (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 	mux.HandleFunc("/api/plan", handlePlan)
+	mux.HandleFunc("/api/status", handleStatus)
+	mux.HandleFunc("/api/version", handleVersion)
 	return mux, nil
 }
 
@@ -75,31 +82,34 @@ func isLoopback(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func handlePlan(w http.ResponseWriter, r *http.Request) {
+// sprayFromRequest decodes and validates a planRequest and builds the
+// corresponding Spray. On any problem it writes the error response and returns
+// ok=false, so callers can simply `return`.
+func sprayFromRequest(w http.ResponseWriter, r *http.Request) (*helmspray.Spray, bool) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
+		return nil, false
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	var req planRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
-		return
+		return nil, false
 	}
 	if req.Chart == "" {
 		writeError(w, http.StatusBadRequest, "a chart is required")
-		return
+		return nil, false
 	}
 	if len(req.Targets) > 0 && len(req.Excludes) > 0 {
 		writeError(w, http.StatusBadRequest, "cannot use both targets and excludes together")
-		return
+		return nil, false
 	}
 
 	namespace := req.Namespace
 	if namespace == "" {
 		namespace = "default"
 	}
-	s := &helmspray.Spray{
+	return &helmspray.Spray{
 		ChartName:                   req.Chart,
 		Namespace:                   namespace,
 		Targets:                     req.Targets,
@@ -107,16 +117,52 @@ func handlePlan(w http.ResponseWriter, r *http.Request) {
 		PrefixReleases:              req.PrefixReleases,
 		PrefixReleasesWithNamespace: req.PrefixReleasesWithNamespace,
 		ValuesOpts:                  cliValues.Options{Values: req.Set, ValueFiles: req.ValueFiles},
-	}
+	}, true
+}
 
+// handlePlan computes the weight-ordered deployment plan without contacting the
+// cluster.
+func handlePlan(w http.ResponseWriter, r *http.Request) {
+	s, ok := sprayFromRequest(w, r)
+	if !ok {
+		return
+	}
 	plan, err := s.Plan()
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(plan)
+}
+
+// handleStatus returns the plan augmented with the live helm status of each
+// release, so the UI can colour the tiers while a deployment runs. It is
+// read-only: the actual deploy stays on the CLI.
+func handleStatus(w http.ResponseWriter, r *http.Request) {
+	s, ok := sprayFromRequest(w, r)
+	if !ok {
+		return
+	}
+	plan, releases, err := s.LiveStatus(r.Context())
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"plan": plan, "releases": releases})
+}
+
+// handleVersion reports the helm-spray version and the version of the helm CLI
+// it would drive. A missing helm binary yields an empty helm field rather than
+// an error, so the UI still loads.
+func handleVersion(w http.ResponseWriter, r *http.Request) {
+	resp := map[string]string{"spray": Version, "helm": ""}
+	if v, err := helm.HostVersion(r.Context()); err == nil {
+		resp["helm"] = v
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func writeError(w http.ResponseWriter, code int, msg string) {

@@ -63,6 +63,24 @@ func TestUninstallTargeted(t *testing.T) {
 	}
 }
 
+func TestLiveStatusReportsReleaseState(t *testing.T) {
+	fh := &fakeHelm{releases: map[string]helm.Release{
+		"alpha": {Name: "alpha", Status: "deployed", Revision: "3"},
+	}}
+	s := &Spray{ChartName: "testdata/umbrella", Namespace: "ns", helmClient: fh}
+
+	plan, status, err := s.LiveStatus(context.Background())
+	if err != nil {
+		t.Fatalf("LiveStatus: %v", err)
+	}
+	if plan == nil || len(plan.Tiers) == 0 {
+		t.Fatal("expected a plan with tiers")
+	}
+	if st, ok := status["alpha"]; !ok || st.Status != "deployed" || st.Revision != "3" {
+		t.Errorf("expected alpha deployed at revision 3, got %+v", status["alpha"])
+	}
+}
+
 func TestSprayHooksOnlySubchartSucceeds(t *testing.T) {
 	// A sub-chart whose only resources are helm hooks renders an empty .manifest
 	// (helm reports hooks separately), so the tier has no workloads to gate on.

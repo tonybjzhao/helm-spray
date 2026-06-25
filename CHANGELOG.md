@@ -23,7 +23,9 @@ Modernisation of helm-spray as a Helm v4 plugin.
 * Added `--output json` to print the weight-ordered deployment plan without
   contacting the cluster.
 * Added a `helm spray ui` embedded web interface to configure and visualise a
-  deployment.
+  deployment, with a read-only live-status view that colours the plan as each
+  release reports its helm status, a helm-host version indicator, and a
+  light/dark theme. Deploying stays on the CLI; the UI never mutates the cluster.
 * Added a `helm spray uninstall [CHART]` command that removes the releases
   created for an umbrella chart's sub-charts in reverse weight order, and a
   `--prune` flag that, after deploying, uninstalls releases for sub-charts that

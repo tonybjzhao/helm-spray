@@ -148,6 +148,36 @@ func TestListRejectsBadJSON(t *testing.T) {
 	}
 }
 
+func TestHostVersion(t *testing.T) {
+	orig := run
+	defer func() { run = orig }()
+	run = func(_ context.Context, _ []string) ([]byte, error) { return []byte("v4.2.2\n"), nil }
+	got, err := HostVersion(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "v4.2.2" {
+		t.Errorf("HostVersion = %q, want v4.2.2", got)
+	}
+}
+
+func TestUninstallBuildsArgs(t *testing.T) {
+	orig := run
+	defer func() { run = orig }()
+	var captured []string
+	run = func(_ context.Context, args []string) ([]byte, error) {
+		captured = args
+		return nil, nil
+	}
+	if err := Uninstall(context.Background(), "ns", "my-release", true, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"uninstall", "my-release", "--namespace", "ns", "--dry-run"}
+	if !reflect.DeepEqual(captured, want) {
+		t.Errorf("uninstall args = %v, want %v", captured, want)
+	}
+}
+
 func TestUpgradeWithValuesParsesResult(t *testing.T) {
 	orig := run
 	defer func() { run = orig }()

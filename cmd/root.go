@@ -327,6 +327,7 @@ func newUICmd() *cobra.Command {
 		SilenceUsage: true,
 		Args:         cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
+			gui.Version = version
 			return gui.Serve(address)
 		},
 	}

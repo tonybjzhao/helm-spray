@@ -62,6 +62,49 @@ func TestPlanAPIRejectsGet(t *testing.T) {
 	}
 }
 
+func TestVersionAPIReportsSprayVersion(t *testing.T) {
+	srv := newServer(t)
+	resp, err := http.Get(srv.URL + "/api/version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var v map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := v["spray"]; !ok {
+		t.Errorf("version response is missing the spray field: %v", v)
+	}
+}
+
+func TestStatusAPIRequiresChart(t *testing.T) {
+	srv := newServer(t)
+	resp, err := http.Post(srv.URL+"/api/status", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestStatusAPIRejectsGet(t *testing.T) {
+	srv := newServer(t)
+	resp, err := http.Get(srv.URL + "/api/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", resp.StatusCode)
+	}
+}
+
 func TestIsLoopback(t *testing.T) {
 	cases := map[string]bool{
 		"localhost": true, "127.0.0.1": true, "::1": true,

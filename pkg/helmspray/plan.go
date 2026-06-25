@@ -1,6 +1,8 @@
 package helmspray
 
 import (
+	"context"
+	"fmt"
 	"sort"
 
 	"github.com/ThalesGroup/helm-spray/v4/internal/dependencies"
@@ -56,6 +58,35 @@ func (s *Spray) Plan() (*Plan, error) {
 		plan.Tiers = append(plan.Tiers, PlanTier{Weight: w, Releases: byWeight[w]})
 	}
 	return plan, nil
+}
+
+// ReleaseStatus is the live state of a single release, as surfaced read-only to
+// the web UI so it can colour the plan while a deployment is in progress.
+type ReleaseStatus struct {
+	Status   string `json:"status"`
+	Revision string `json:"revision"`
+}
+
+// LiveStatus returns the deployment plan augmented with the live helm status of
+// each release in the namespace. It performs a read-only "helm list" and never
+// mutates the cluster, so it is safe for the web UI to poll.
+func (s *Spray) LiveStatus(ctx context.Context) (*Plan, map[string]ReleaseStatus, error) {
+	if s.helmClient == nil {
+		s.helmClient = execHelmClient{}
+	}
+	plan, err := s.Plan()
+	if err != nil {
+		return nil, nil, err
+	}
+	releases, err := s.helmClient.List(ctx, s.Namespace, s.Debug)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing releases: %w", err)
+	}
+	status := make(map[string]ReleaseStatus, len(releases))
+	for name, r := range releases {
+		status[name] = ReleaseStatus{Status: r.Status, Revision: r.Revision}
+	}
+	return plan, status, nil
 }
 
 func planRelease(d dependencies.Dependency) PlanRelease {
