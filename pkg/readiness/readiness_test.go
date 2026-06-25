@@ -1,4 +1,4 @@
-package kubectl
+package readiness
 
 import (
 	"context"
@@ -9,9 +9,22 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func i32(n int32) *int32 { return &n }
+
+// withFakeClient swaps the package clientset for a fake seeded with objs, and
+// returns a restore function for use with defer.
+func withFakeClient(t *testing.T, objs ...runtime.Object) func() {
+	t.Helper()
+	orig := client
+	cs := fake.NewClientset(objs...)
+	client = func() (kubernetes.Interface, error) { return cs, nil }
+	return func() { client = orig }
+}
 
 func TestDeploymentReady(t *testing.T) {
 	base := appsv1.Deployment{
@@ -107,46 +120,6 @@ func TestJobReady(t *testing.T) {
 	}
 }
 
-func TestAllReady(t *testing.T) {
-	items := []appsv1.Deployment{
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "a", Generation: 1},
-			Spec:       appsv1.DeploymentSpec{Replicas: i32(1)},
-			Status:     appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1},
-		},
-	}
-	name := func(d *appsv1.Deployment) string { return d.Name }
-	ready := func(d *appsv1.Deployment) (bool, error) { return deploymentReady(d), nil }
-
-	if ok, err := allReady([]string{"a"}, items, name, ready); err != nil || !ok {
-		t.Errorf("present ready item: ok=%v err=%v", ok, err)
-	}
-	if ok, _ := allReady([]string{"a", "missing"}, items, name, ready); ok {
-		t.Error("a requested name absent from the cluster should not be considered ready")
-	}
-}
-
-func TestAreDeploymentsReadyDecodesJSON(t *testing.T) {
-	orig := runKubectl
-	defer func() { runKubectl = orig }()
-	runKubectl = func(_ context.Context, _ []string) ([]byte, error) {
-		return []byte(`{"items":[{"metadata":{"name":"a","generation":1},"spec":{"replicas":1},"status":{"observedGeneration":1,"updatedReplicas":1,"readyReplicas":1,"availableReplicas":1}}]}`), nil
-	}
-	ok, err := AreDeploymentsReady(context.Background(), []string{"a"}, "ns", false)
-	if err != nil || !ok {
-		t.Fatalf("expected ready, got ok=%v err=%v", ok, err)
-	}
-}
-
-func TestAreDeploymentsReadyPropagatesError(t *testing.T) {
-	orig := runKubectl
-	defer func() { runKubectl = orig }()
-	runKubectl = func(_ context.Context, _ []string) ([]byte, error) { return nil, errors.New("boom") }
-	if _, err := AreDeploymentsReady(context.Background(), []string{"a"}, "ns", false); err == nil {
-		t.Fatal("expected the kubectl error to propagate")
-	}
-}
-
 func TestDaemonSetReady(t *testing.T) {
 	ready := appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{Generation: 1},
@@ -175,5 +148,90 @@ func TestDaemonSetReady(t *testing.T) {
 	unavailable.Status.NumberUnavailable = 1
 	if daemonSetReady(&unavailable) {
 		t.Error("a daemonset with unavailable pods should not be ready")
+	}
+}
+
+func TestAllReady(t *testing.T) {
+	items := []appsv1.Deployment{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "a", Generation: 1},
+			Spec:       appsv1.DeploymentSpec{Replicas: i32(1)},
+			Status:     appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1},
+		},
+	}
+	name := func(d *appsv1.Deployment) string { return d.Name }
+	ready := func(d *appsv1.Deployment) (bool, error) { return deploymentReady(d), nil }
+
+	if ok, err := allReady([]string{"a"}, items, name, ready); err != nil || !ok {
+		t.Errorf("present ready item: ok=%v err=%v", ok, err)
+	}
+	if ok, _ := allReady([]string{"a", "missing"}, items, name, ready); ok {
+		t.Error("a requested name absent from the cluster should not be considered ready")
+	}
+}
+
+func TestAreDeploymentsReadyViaAPI(t *testing.T) {
+	defer withFakeClient(t, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "a", Namespace: "ns", Generation: 1},
+		Spec:       appsv1.DeploymentSpec{Replicas: i32(1)},
+		Status:     appsv1.DeploymentStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, AvailableReplicas: 1},
+	})()
+	ok, err := AreDeploymentsReady(context.Background(), []string{"a"}, "ns", false)
+	if err != nil || !ok {
+		t.Fatalf("expected ready, got ok=%v err=%v", ok, err)
+	}
+}
+
+func TestAreStatefulSetsReadyViaAPI(t *testing.T) {
+	defer withFakeClient(t, &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "s", Namespace: "ns", Generation: 1},
+		Spec:       appsv1.StatefulSetSpec{Replicas: i32(1)},
+		Status:     appsv1.StatefulSetStatus{ObservedGeneration: 1, UpdatedReplicas: 1, ReadyReplicas: 1, CurrentRevision: "r", UpdateRevision: "r"},
+	})()
+	ok, err := AreStatefulSetsReady(context.Background(), []string{"s"}, "ns", false)
+	if err != nil || !ok {
+		t.Fatalf("expected ready, got ok=%v err=%v", ok, err)
+	}
+}
+
+func TestAreDaemonSetsReadyViaAPI(t *testing.T) {
+	defer withFakeClient(t, &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "d", Namespace: "ns", Generation: 1},
+		Status:     appsv1.DaemonSetStatus{ObservedGeneration: 1, DesiredNumberScheduled: 1, UpdatedNumberScheduled: 1, NumberReady: 1},
+	})()
+	ok, err := AreDaemonSetsReady(context.Background(), []string{"d"}, "ns", false)
+	if err != nil || !ok {
+		t.Fatalf("expected ready, got ok=%v err=%v", ok, err)
+	}
+}
+
+func TestAreJobsReadyViaAPI(t *testing.T) {
+	defer withFakeClient(t, &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"},
+		Spec:       batchv1.JobSpec{Completions: i32(1)},
+		Status:     batchv1.JobStatus{Succeeded: 1},
+	})()
+	ok, err := AreJobsReady(context.Background(), []string{"j"}, "ns", false)
+	if err != nil || !ok {
+		t.Fatalf("expected ready, got ok=%v err=%v", ok, err)
+	}
+}
+
+func TestAreJobsReadyFailsFast(t *testing.T) {
+	defer withFakeClient(t, &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"},
+		Status:     batchv1.JobStatus{Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}}},
+	})()
+	if _, err := AreJobsReady(context.Background(), []string{"j"}, "ns", false); err == nil {
+		t.Fatal("a failed job should surface an error so the caller fails fast")
+	}
+}
+
+func TestReadinessClientErrorPropagates(t *testing.T) {
+	orig := client
+	defer func() { client = orig }()
+	client = func() (kubernetes.Interface, error) { return nil, errors.New("boom") }
+	if _, err := AreDeploymentsReady(context.Background(), []string{"a"}, "ns", false); err == nil {
+		t.Fatal("expected the client error to propagate")
 	}
 }

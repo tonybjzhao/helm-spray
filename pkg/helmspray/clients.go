@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/ThalesGroup/helm-spray/v4/pkg/helm"
-	"github.com/ThalesGroup/helm-spray/v4/pkg/kubectl"
+	"github.com/ThalesGroup/helm-spray/v4/pkg/readiness"
 )
 
 // HelmClient performs the helm operations the orchestrator needs. It is an
@@ -41,22 +41,22 @@ func (execHelmClient) Uninstall(ctx context.Context, namespace, releaseName stri
 	return helm.Uninstall(ctx, namespace, releaseName, dryRun, debug)
 }
 
-// execReadinessChecker is the default ReadinessChecker, backed by the kubectl
-// wrapper.
+// execReadinessChecker is the default ReadinessChecker, backed by the readiness
+// package (the embedded Kubernetes client).
 type execReadinessChecker struct{}
 
 func (execReadinessChecker) DeploymentsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
-	return kubectl.AreDeploymentsReady(ctx, names, namespace, debug)
+	return readiness.AreDeploymentsReady(ctx, names, namespace, debug)
 }
 
 func (execReadinessChecker) StatefulSetsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
-	return kubectl.AreStatefulSetsReady(ctx, names, namespace, debug)
+	return readiness.AreStatefulSetsReady(ctx, names, namespace, debug)
 }
 
 func (execReadinessChecker) DaemonSetsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
-	return kubectl.AreDaemonSetsReady(ctx, names, namespace, debug)
+	return readiness.AreDaemonSetsReady(ctx, names, namespace, debug)
 }
 
 func (execReadinessChecker) JobsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
-	return kubectl.AreJobsReady(ctx, names, namespace, debug)
+	return readiness.AreJobsReady(ctx, names, namespace, debug)
 }

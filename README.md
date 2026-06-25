@@ -42,8 +42,9 @@ NAME    VERSION  DESCRIPTION
 spray   5.x      Helm plugin for upgrading sub-charts from umbrella chart with dependency orders
 ```
 
-`helm plugin install` requires `git`. Helm Spray uses `kubectl` to check
-workload readiness — see the [kubectl install guide](https://kubernetes.io/docs/tasks/tools/).
+`helm plugin install` requires `git`. Helm Spray checks workload readiness by
+talking to the Kubernetes API directly with your existing kubeconfig, so **no
+`kubectl` binary is required** — `helm` is the only external tool it needs.
 
 ### From source
 
@@ -308,7 +309,7 @@ interfere with one another.
 ```console
 $ go build ./...
 $ go test ./...                                   # unit tests
-$ go test -tags integration ./pkg/helmspray/...   # live cluster integration test (needs helm + kubectl + a cluster)
+$ go test -tags integration ./pkg/helmspray/...   # live cluster integration test (needs helm + a cluster)
 $ make dist                                        # cross-platform release archives
 ```
 

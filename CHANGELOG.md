@@ -21,9 +21,11 @@ Modernisation of helm-spray as a Helm v4 plugin.
   redacted secret `--set`/`--set-string`/`--set-file` values from debug logs.
 * Reworked readiness gating: typed checks for Deployments, StatefulSets,
   DaemonSets and Jobs (Jobs honour `.spec.completions` and fail fast on a failed
-  Job), with capped exponential back-off polling.
+  Job), with capped exponential back-off polling. Readiness now queries the
+  Kubernetes API directly through the embedded client, so **`kubectl` is no
+  longer required** at runtime; `helm` remains the only external dependency.
 * Introduced client interfaces and `context.Context` propagation (SIGINT/SIGTERM
-  cancels in-flight helm/kubectl processes), enabling automated unit and
+  cancels in-flight helm processes), enabling automated unit and
   integration tests from zero prior coverage.
 * Added `--output json` to print the weight-ordered deployment plan without
   contacting the cluster.

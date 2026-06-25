@@ -11,33 +11,75 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package kubectl wraps the kubectl command-line interface to determine when the
-// workloads created by a release have become ready. It queries each workload
-// kind once as JSON and evaluates readiness from the decoded Kubernetes objects,
-// rather than embedding workload names into go-templates.
-package kubectl
+// Package readiness reports when the workloads created by a release have become
+// ready. It queries the Kubernetes API directly through the embedded client-go
+// client — no external kubectl binary is required — and evaluates Deployments,
+// StatefulSets, DaemonSets and Jobs from their typed status. The clientset is
+// built once from the ambient kubeconfig, using the same default loading rules
+// and current-context resolution as helm and kubectl.
+package readiness
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
+	"sync"
+	"time"
 
 	"github.com/ThalesGroup/helm-spray/v4/internal/log"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
-// AreDeploymentsReady reports whether every named Deployment in the namespace
-// has completed its rollout. A name that does not (yet) exist is treated as not
-// ready so the caller keeps waiting.
+// clientTimeout bounds each Kubernetes API call so a hung apiserver cannot block
+// readiness polling past its own deadline.
+const clientTimeout = 30 * time.Second
+
+// client returns the Kubernetes clientset used for readiness checks. It is a
+// package variable so tests can substitute a fake clientset.
+var client = defaultClient
+
+var (
+	clientOnce sync.Once
+	clientset  kubernetes.Interface
+	clientErr  error
+)
+
+// defaultClient builds (once) a clientset from the ambient kubeconfig, resolving
+// the config the same way helm and kubectl do (KUBECONFIG, ~/.kube/config, the
+// in-cluster service account, and the current context).
+func defaultClient() (kubernetes.Interface, error) {
+	clientOnce.Do(func() {
+		rules := clientcmd.NewDefaultClientConfigLoadingRules()
+		cfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, &clientcmd.ConfigOverrides{})
+		restCfg, err := cfg.ClientConfig()
+		if err != nil {
+			clientErr = fmt.Errorf("loading kubeconfig: %w", err)
+			return
+		}
+		if restCfg.Timeout == 0 {
+			restCfg.Timeout = clientTimeout
+		}
+		clientset, clientErr = kubernetes.NewForConfig(restCfg)
+	})
+	return clientset, clientErr
+}
+
+// AreDeploymentsReady reports whether every named Deployment in the namespace has
+// completed its rollout. A name that does not (yet) exist is treated as not ready
+// so the caller keeps waiting.
 func AreDeploymentsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
-	var list appsv1.DeploymentList
-	if err := getList(ctx, namespace, "deployments", debug, &list); err != nil {
+	cs, err := client()
+	if err != nil {
 		return false, err
+	}
+	logQuery(debug, "deployments", namespace)
+	list, err := cs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return false, fmt.Errorf("listing deployments in namespace %q: %w", namespace, err)
 	}
 	return allReady(names, list.Items,
 		func(d *appsv1.Deployment) string { return d.Name },
@@ -47,9 +89,14 @@ func AreDeploymentsReady(ctx context.Context, names []string, namespace string, 
 // AreStatefulSetsReady reports whether every named StatefulSet has completed its
 // rollout.
 func AreStatefulSetsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
-	var list appsv1.StatefulSetList
-	if err := getList(ctx, namespace, "statefulsets", debug, &list); err != nil {
+	cs, err := client()
+	if err != nil {
 		return false, err
+	}
+	logQuery(debug, "statefulsets", namespace)
+	list, err := cs.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return false, fmt.Errorf("listing statefulsets in namespace %q: %w", namespace, err)
 	}
 	return allReady(names, list.Items,
 		func(s *appsv1.StatefulSet) string { return s.Name },
@@ -59,9 +106,14 @@ func AreStatefulSetsReady(ctx context.Context, names []string, namespace string,
 // AreDaemonSetsReady reports whether every named DaemonSet has rolled out to all
 // scheduled nodes.
 func AreDaemonSetsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
-	var list appsv1.DaemonSetList
-	if err := getList(ctx, namespace, "daemonsets", debug, &list); err != nil {
+	cs, err := client()
+	if err != nil {
 		return false, err
+	}
+	logQuery(debug, "daemonsets", namespace)
+	list, err := cs.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return false, fmt.Errorf("listing daemonsets in namespace %q: %w", namespace, err)
 	}
 	return allReady(names, list.Items,
 		func(d *appsv1.DaemonSet) string { return d.Name },
@@ -72,9 +124,14 @@ func AreDaemonSetsReady(ctx context.Context, names []string, namespace string, d
 // successful completions. If a Job has definitively failed it returns an error so
 // the caller fails fast instead of waiting out the whole timeout.
 func AreJobsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
-	var list batchv1.JobList
-	if err := getList(ctx, namespace, "jobs", debug, &list); err != nil {
+	cs, err := client()
+	if err != nil {
 		return false, err
+	}
+	logQuery(debug, "jobs", namespace)
+	list, err := cs.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return false, fmt.Errorf("listing jobs in namespace %q: %w", namespace, err)
 	}
 	return allReady(names, list.Items,
 		func(j *batchv1.Job) string { return j.Name },
@@ -85,6 +142,12 @@ func AreJobsReady(ctx context.Context, names []string, namespace string, debug b
 			}
 			return ready, nil
 		})
+}
+
+func logQuery(debug bool, kind, namespace string) {
+	if debug {
+		log.Info(3, "querying %s in namespace %q via the Kubernetes API", kind, namespace)
+	}
 }
 
 func deploymentReady(d *appsv1.Deployment) bool {
@@ -155,55 +218,22 @@ func desiredReplicas(r *int32) int32 {
 // satisfies ready. A requested name that is absent yields (false, nil) so the
 // caller keeps polling until the workload appears.
 func allReady[T any](names []string, items []T, name func(*T) string, ready func(*T) (bool, error)) (bool, error) {
+	byName := make(map[string]*T, len(items))
+	for i := range items {
+		byName[name(&items[i])] = &items[i]
+	}
 	for _, n := range names {
-		var match *T
-		for i := range items {
-			if name(&items[i]) == n {
-				match = &items[i]
-				break
-			}
-		}
-		if match == nil {
+		match, ok := byName[n]
+		if !ok {
 			return false, nil
 		}
-		ok, err := ready(match)
+		readyOK, err := ready(match)
 		if err != nil {
 			return false, err
 		}
-		if !ok {
+		if !readyOK {
 			return false, nil
 		}
 	}
 	return true, nil
-}
-
-// getList runs "kubectl get <resource> -o json" in the namespace and decodes the
-// result into the provided typed list.
-func getList(ctx context.Context, namespace, resource string, debug bool, into any) error {
-	args := []string{"--namespace", namespace, "get", resource, "-o", "json"}
-	if debug {
-		log.Info(3, "running kubectl command: %v", args)
-	}
-	out, err := runKubectl(ctx, args)
-	if err != nil {
-		return fmt.Errorf("running kubectl get %s in namespace %q: %w", resource, namespace, err)
-	}
-	if debug {
-		log.Info(3, "kubectl output: %s", string(out))
-	}
-	if err := json.Unmarshal(out, into); err != nil {
-		return fmt.Errorf("parsing kubectl get %s output: %w", resource, err)
-	}
-	return nil
-}
-
-// runKubectl executes kubectl and returns its stdout. It is a package variable so
-// tests can substitute a fake without invoking kubectl.
-var runKubectl = func(ctx context.Context, args []string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "kubectl", args...) // #nosec G204 -- fixed "kubectl get" subcommand; namespace/resource are argv elements, not a shell
-	out := &bytes.Buffer{}
-	cmd.Stdout = out
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
-	return out.Bytes(), err
 }
