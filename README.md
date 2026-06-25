@@ -24,10 +24,11 @@ individually-addressable release per sub-chart.
 
 | helm-spray | Helm |
 |------------|------|
-| v4.x       | Helm v4 (primary) and Helm v3 |
+| v5.x       | Helm v4 (primary) and Helm v3 |
+| v4.x       | Helm v3 |
 | v3.x       | Helm v2 |
 
-helm-spray v4 links the **Helm v4 SDK** for chart loading and value merging, and
+helm-spray v5 links the **Helm v4 SDK** for chart loading and value merging, and
 drives whichever `helm` binary invoked it (via `HELM_BIN`). It detects the host
 helm version and emits version-appropriate flags, so it works against both Helm
 v4 and Helm v3 hosts during the v3 end-of-life transition.
@@ -38,7 +39,7 @@ v4 and Helm v3 hosts during the v3 end-of-life transition.
 $ helm plugin install https://github.com/ThalesGroup/helm-spray
 $ helm plugin list
 NAME    VERSION  DESCRIPTION
-spray   4.x      Helm plugin for upgrading sub-charts from umbrella chart with dependency orders
+spray   5.x      Helm plugin for upgrading sub-charts from umbrella chart with dependency orders
 ```
 
 `helm plugin install` requires `git`. Helm Spray uses `kubectl` to check
@@ -261,7 +262,9 @@ $ make dist                                        # cross-platform release arch
 A good end-to-end exercise is to build a small umbrella chart of weighted
 micro-services — for example a layered system with a datastore and message bus at
 weight 0, data services at weight 1, domain logic at weight 2, and an
-operator-facing edge at weight 3 — and deploy it with `helm spray`.
+operator-facing edge at weight 3 — and deploy it with `helm spray`. The companion
+[Skyward ATC](https://github.com/samlister-thales/SkywardATC) project is a
+ready-made example of exactly this.
 
 ## Contributing
 
