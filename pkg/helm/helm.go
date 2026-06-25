@@ -263,8 +263,9 @@ func Fetch(ctx context.Context, chart string, version string) (string, func(), e
 }
 
 // run executes the helm binary with the given arguments and returns its stdout.
-// stderr is streamed to the process stderr so helm diagnostics remain visible.
-func run(ctx context.Context, args []string) ([]byte, error) {
+// stderr is streamed to the process stderr so helm diagnostics remain visible. It
+// is a package variable so tests can substitute a fake without invoking helm.
+var run = func(ctx context.Context, args []string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, binary(), args...) // #nosec G204 -- HELM_BIN (set by the helm host) or "helm"; args built internally, no shell
 	stdout := &bytes.Buffer{}
 	cmd.Stdout = stdout

@@ -172,18 +172,26 @@ func getList(ctx context.Context, namespace, resource string, debug bool, into a
 	if debug {
 		log.Info(3, "running kubectl command: %v", args)
 	}
+	out, err := runKubectl(ctx, args)
+	if err != nil {
+		return fmt.Errorf("running kubectl get %s in namespace %q: %w", resource, namespace, err)
+	}
+	if debug {
+		log.Info(3, "kubectl output: %s", string(out))
+	}
+	if err := json.Unmarshal(out, into); err != nil {
+		return fmt.Errorf("parsing kubectl get %s output: %w", resource, err)
+	}
+	return nil
+}
+
+// runKubectl executes kubectl and returns its stdout. It is a package variable so
+// tests can substitute a fake without invoking kubectl.
+var runKubectl = func(ctx context.Context, args []string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "kubectl", args...) // #nosec G204 -- fixed "kubectl get" subcommand; namespace/resource are argv elements, not a shell
 	out := &bytes.Buffer{}
 	cmd.Stdout = out
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("running kubectl get %s in namespace %q: %w", resource, namespace, err)
-	}
-	if debug {
-		log.Info(3, "kubectl output: %s", out.String())
-	}
-	if err := json.Unmarshal(out.Bytes(), into); err != nil {
-		return fmt.Errorf("parsing kubectl get %s output: %w", resource, err)
-	}
-	return nil
+	err := cmd.Run()
+	return out.Bytes(), err
 }

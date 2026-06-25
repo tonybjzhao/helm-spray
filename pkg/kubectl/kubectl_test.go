@@ -1,6 +1,8 @@
 package kubectl
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -95,5 +97,26 @@ func TestAllReady(t *testing.T) {
 	}
 	if ok, _ := allReady([]string{"a", "missing"}, items, name, ready); ok {
 		t.Error("a requested name absent from the cluster should not be considered ready")
+	}
+}
+
+func TestAreDeploymentsReadyDecodesJSON(t *testing.T) {
+	orig := runKubectl
+	defer func() { runKubectl = orig }()
+	runKubectl = func(_ context.Context, _ []string) ([]byte, error) {
+		return []byte(`{"items":[{"metadata":{"name":"a","generation":1},"spec":{"replicas":1},"status":{"observedGeneration":1,"updatedReplicas":1,"readyReplicas":1,"availableReplicas":1}}]}`), nil
+	}
+	ok, err := AreDeploymentsReady(context.Background(), []string{"a"}, "ns", false)
+	if err != nil || !ok {
+		t.Fatalf("expected ready, got ok=%v err=%v", ok, err)
+	}
+}
+
+func TestAreDeploymentsReadyPropagatesError(t *testing.T) {
+	orig := runKubectl
+	defer func() { runKubectl = orig }()
+	runKubectl = func(_ context.Context, _ []string) ([]byte, error) { return nil, errors.New("boom") }
+	if _, err := AreDeploymentsReady(context.Background(), []string{"a"}, "ns", false); err == nil {
+		t.Fatal("expected the kubectl error to propagate")
 	}
 }

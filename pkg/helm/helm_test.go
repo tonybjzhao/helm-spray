@@ -1,6 +1,8 @@
 package helm
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -110,5 +112,58 @@ func TestRedactArgs(t *testing.T) {
 	// The input slice must not be mutated (it is the vector actually executed).
 	if in[5] != "db.password=s3cret" {
 		t.Errorf("redactArgs mutated its input: %v", in)
+	}
+}
+
+func TestListParsesReleases(t *testing.T) {
+	orig := run
+	defer func() { run = orig }()
+	run = func(_ context.Context, _ []string) ([]byte, error) {
+		return []byte(`[{"name":"a","status":"deployed"},{"name":"b","status":"failed"}]`), nil
+	}
+	got, err := List(context.Background(), "ns", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 || got["a"].Status != "deployed" || got["b"].Status != "failed" {
+		t.Errorf("unexpected releases: %+v", got)
+	}
+}
+
+func TestListPropagatesRunError(t *testing.T) {
+	orig := run
+	defer func() { run = orig }()
+	run = func(_ context.Context, _ []string) ([]byte, error) { return nil, errors.New("boom") }
+	if _, err := List(context.Background(), "ns", false); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected the run error to propagate, got %v", err)
+	}
+}
+
+func TestListRejectsBadJSON(t *testing.T) {
+	orig := run
+	defer func() { run = orig }()
+	run = func(_ context.Context, _ []string) ([]byte, error) { return []byte("not json"), nil }
+	if _, err := List(context.Background(), "ns", false); err == nil {
+		t.Fatal("expected a parse error for malformed output")
+	}
+}
+
+func TestUpgradeWithValuesParsesResult(t *testing.T) {
+	orig := run
+	defer func() { run = orig }()
+	var captured []string
+	run = func(_ context.Context, args []string) ([]byte, error) {
+		captured = args
+		return []byte(`{"info":{"status":"deployed"},"manifest":"kind: Deployment"}`), nil
+	}
+	rel, err := UpgradeWithValues(context.Background(), UpgradeRequest{ReleaseName: "r", ChartPath: "c", Namespace: "ns", Timeout: 60})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rel.Info["status"] != "deployed" || rel.Manifest != "kind: Deployment" {
+		t.Errorf("unexpected release: %+v", rel)
+	}
+	if !contains(captured, "upgrade") || !contains(captured, "--install") {
+		t.Errorf("expected an upgrade --install invocation, got %v", captured)
 	}
 }
