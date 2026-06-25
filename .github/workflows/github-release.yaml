@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -19,10 +21,31 @@ jobs:
           go-version: "1.26"
       - name: Make release
         run: make dist
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: _dist/helm-spray.sbom.spdx.json
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign checksums (keyless)
+        run: |
+          cosign sign-blob --yes \
+            --output-signature _dist/SHA256SUMS.sig \
+            --output-certificate _dist/SHA256SUMS.pem \
+            _dist/SHA256SUMS
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: '_dist/helm-spray-*.tar.gz'
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           prerelease: false
           files: |
-            _dist/helm-spray*
+            _dist/helm-spray-*.tar.gz
             _dist/SHA256SUMS
+            _dist/SHA256SUMS.sig
+            _dist/SHA256SUMS.pem
+            _dist/helm-spray.sbom.spdx.json

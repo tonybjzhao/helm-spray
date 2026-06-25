@@ -48,3 +48,18 @@ jobs:
         run: |
           go install github.com/securego/gosec/v2/cmd/gosec@latest
           gosec -quiet ./...
+
+  e2e:
+    name: End-to-end (kind)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+      - uses: azure/setup-helm@v4
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+      - name: Run end-to-end tests
+        run: go test -tags integration -v ./pkg/helmspray/...
