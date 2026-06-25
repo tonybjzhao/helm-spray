@@ -84,6 +84,8 @@ var version = "SNAPSHOT"
 // up front rather than surfacing later as an opaque helm release-name error.
 var releasePrefixPattern = regexp.MustCompile("^[a-zA-Z0-9-]+$")
 
+// NewRootCmd builds the root "spray" command and registers its "ui" and
+// "uninstall" sub-commands.
 func NewRootCmd() *cobra.Command {
 
 	s := &helmspray.Spray{}

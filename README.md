@@ -46,6 +46,15 @@ spray   5.x      Helm plugin for upgrading sub-charts from umbrella chart with d
 talking to the Kubernetes API directly with your existing kubeconfig, so **no
 `kubectl` binary is required** — `helm` is the only external tool it needs.
 
+### Prerequisites
+
+- **helm** — Helm Spray runs as a helm plugin and drives the same `helm` binary
+  that invoked it.
+- **A Kubernetes cluster** reachable through your kubeconfig (the same context
+  `helm` uses).
+- **git** — only for `helm plugin install`.
+- **Go 1.26+** — only if building from source.
+
 ### From source
 
 Build a binary for your platform and run it directly:
@@ -70,6 +79,9 @@ $ helm spray ./my-umbrella-chart
 
 # Re-deploy a single sub-chart:
 $ helm spray --target my-service ./my-umbrella-chart
+
+# Deploy everything except one sub-chart:
+$ helm spray --exclude flaky-service ./my-umbrella-chart
 
 # Remove every release the solution created (reverse weight order):
 $ helm spray uninstall ./my-umbrella-chart

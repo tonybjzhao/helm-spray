@@ -196,6 +196,10 @@ func processIncludeInValuesFile(chart *chart.Chart, verbose bool) (string, error
 	return chartValues, nil
 }
 
+// mergeMaps returns a deep merge of b over a: keys in b override keys in a,
+// except that two map values at the same key are merged recursively rather than
+// replaced wholesale. This overlays the CLI-provided values on top of the
+// coalesced chart values without discarding untouched nested keys.
 func mergeMaps(a, b map[string]any) map[string]any {
 	out := make(map[string]any, len(a))
 	for k, v := range a {

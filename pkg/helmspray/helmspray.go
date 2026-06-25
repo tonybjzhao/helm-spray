@@ -5,7 +5,6 @@ package helmspray
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -255,7 +254,7 @@ func (s *Spray) upgrade(ctx context.Context, releases map[string]helm.Release, d
 			log.Info(3, "helm status: %s", upgradedRelease.Info["status"])
 		}
 		if !s.DryRun && upgradedRelease.Info["status"] != statusDeployed {
-			return workloads{}, false, errors.New("status returned by helm differs from \"deployed\", spray interrupted")
+			return workloads{}, false, fmt.Errorf("release %q reported helm status %q instead of %q; spray interrupted", dependency.CorrespondingReleaseName, upgradedRelease.Info["status"], statusDeployed)
 		}
 
 		s.collectWorkloads(&tier, upgradedRelease.Manifest)
@@ -337,7 +336,13 @@ func (s *Spray) wait(ctx context.Context, tier workloads) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return errors.New("timed out waiting for liveness and readiness")
+			var pending []string
+			for i := range checks {
+				if !done[i] && len(checks[i].names) > 0 {
+					pending = append(pending, fmt.Sprintf("%s %v", checks[i].kind, checks[i].names))
+				}
+			}
+			return fmt.Errorf("timed out after %ds waiting for readiness of %s", s.Timeout, strings.Join(pending, ", "))
 		}
 		select {
 		case <-ctx.Done():
