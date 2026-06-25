@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gemalto/helm-spray/v4/internal/gui"
 	"github.com/gemalto/helm-spray/v4/internal/log"
 	"github.com/gemalto/helm-spray/v4/pkg/helm"
 	"github.com/gemalto/helm-spray/v4/pkg/helmspray"
@@ -216,5 +217,24 @@ func NewRootCmd() *cobra.Command {
 		s.Namespace = "default"
 	}
 
+	cmd.AddCommand(newUICmd())
+
 	return cmd
+}
+
+// newUICmd builds the "ui" sub-command, which starts the embedded web UI for
+// configuring and visualising a deployment.
+func newUICmd() *cobra.Command {
+	var address string
+	c := &cobra.Command{
+		Use:          "ui",
+		Short:        "start the helm-spray web UI to configure and visualise a deployment",
+		SilenceUsage: true,
+		Args:         cobra.NoArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return gui.Serve(address)
+		},
+	}
+	c.Flags().StringVar(&address, "address", "127.0.0.1:8080", "address the web UI listens on")
+	return c
 }
