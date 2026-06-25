@@ -62,6 +62,44 @@ func TestPlanAPIRejectsGet(t *testing.T) {
 	}
 }
 
+func TestIsLoopback(t *testing.T) {
+	cases := map[string]bool{
+		"localhost": true, "127.0.0.1": true, "::1": true,
+		"0.0.0.0": false, "192.168.1.10": false, "example.com": false, "": false,
+	}
+	for host, want := range cases {
+		if got := isLoopback(host); got != want {
+			t.Errorf("isLoopback(%q) = %v, want %v", host, got, want)
+		}
+	}
+}
+
+func TestPlanAPIRejectsOversizedBody(t *testing.T) {
+	srv := newServer(t)
+	big := `{"chart":"` + strings.Repeat("a", 2<<20) + `"}` // ~2 MiB, over the 1 MiB limit
+	resp, err := http.Post(srv.URL+"/api/plan", "application/json", strings.NewReader(big))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("expected an oversized body to be rejected, got %d", resp.StatusCode)
+	}
+}
+
+func TestPlanAPIRejectsTargetsAndExcludes(t *testing.T) {
+	srv := newServer(t)
+	body := `{"chart":"x","targets":["a"],"excludes":["b"]}`
+	resp, err := http.Post(srv.URL+"/api/plan", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for targets+excludes, got %d", resp.StatusCode)
+	}
+}
+
 func TestPlanAPIReturnsTiers(t *testing.T) {
 	srv := newServer(t)
 	body := `{"chart":"../../pkg/helmspray/testdata/umbrella","namespace":"demo"}`

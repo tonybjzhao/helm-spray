@@ -2,6 +2,7 @@ package helmspray
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 type fakeHelm struct {
 	upgrades  []helm.UpgradeRequest
 	manifests map[string]string
+	status    string // helm release status to report (defaults to "deployed")
 }
 
 func (f *fakeHelm) List(_ context.Context, _ string, _ bool) (map[string]helm.Release, error) {
@@ -21,8 +23,12 @@ func (f *fakeHelm) List(_ context.Context, _ string, _ bool) (map[string]helm.Re
 
 func (f *fakeHelm) Upgrade(_ context.Context, req helm.UpgradeRequest) (helm.UpgradedRelease, error) {
 	f.upgrades = append(f.upgrades, req)
+	status := f.status
+	if status == "" {
+		status = statusDeployed
+	}
 	return helm.UpgradedRelease{
-		Info:     map[string]interface{}{"status": statusDeployed},
+		Info:     map[string]any{"status": status},
 		Manifest: f.manifests[req.ReleaseName],
 	}, nil
 }
@@ -30,20 +36,79 @@ func (f *fakeHelm) Upgrade(_ context.Context, req helm.UpgradeRequest) (helm.Upg
 // fakeReadiness records the deployment readiness queries and always reports ready.
 type fakeReadiness struct {
 	deploymentQueries [][]string
+	notReady          bool  // when true, workloads never become ready
+	err               error // when set, readiness checks return this error
+}
+
+func (f *fakeReadiness) result() (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	return !f.notReady, nil
 }
 
 func (f *fakeReadiness) DeploymentsReady(_ context.Context, names []string, _ string, _ bool) (bool, error) {
 	f.deploymentQueries = append(f.deploymentQueries, names)
-	return true, nil
+	return f.result()
 }
 func (f *fakeReadiness) StatefulSetsReady(_ context.Context, _ []string, _ string, _ bool) (bool, error) {
-	return true, nil
+	return f.result()
 }
 func (f *fakeReadiness) DaemonSetsReady(_ context.Context, _ []string, _ string, _ bool) (bool, error) {
-	return true, nil
+	return f.result()
 }
 func (f *fakeReadiness) JobsReady(_ context.Context, _ []string, _ string, _ bool) (bool, error) {
-	return true, nil
+	return f.result()
+}
+
+// sprayWithAlphaDeployment targets only the weight-0 "alpha" sub-chart and gives
+// it a Deployment manifest, so a single tier is upgraded and then gated.
+func sprayWithAlphaDeployment(fh *fakeHelm, fr *fakeReadiness, timeout int) *Spray {
+	if fh.manifests == nil {
+		fh.manifests = map[string]string{}
+	}
+	fh.manifests["alpha"] = "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: alpha-dep\n"
+	return &Spray{
+		ChartName:  "testdata/umbrella",
+		Namespace:  "ns",
+		Targets:    []string{"alpha"},
+		Timeout:    timeout,
+		helmClient: fh,
+		readiness:  fr,
+	}
+}
+
+func TestSprayReadinessErrorPropagates(t *testing.T) {
+	s := sprayWithAlphaDeployment(&fakeHelm{}, &fakeReadiness{err: errors.New("boom")}, 30)
+	err := s.Spray(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected the readiness error to propagate, got %v", err)
+	}
+}
+
+func TestSprayReadinessTimeout(t *testing.T) {
+	s := sprayWithAlphaDeployment(&fakeHelm{}, &fakeReadiness{notReady: true}, 0)
+	err := s.Spray(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("expected a timeout error, got %v", err)
+	}
+}
+
+func TestSprayContextCancellation(t *testing.T) {
+	s := sprayWithAlphaDeployment(&fakeHelm{}, &fakeReadiness{notReady: true}, 600)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.Spray(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestSprayInterruptsOnNonDeployedStatus(t *testing.T) {
+	s := sprayWithAlphaDeployment(&fakeHelm{status: "failed"}, &fakeReadiness{}, 30)
+	err := s.Spray(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "deployed") {
+		t.Fatalf("expected the spray to be interrupted on a non-deployed status, got %v", err)
+	}
 }
 
 func TestSprayOrchestration(t *testing.T) {
