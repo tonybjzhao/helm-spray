@@ -1,5 +1,32 @@
 # Release Notes
 
+## Unreleased
+
+Modernisation of helm-spray as a Helm v4 plugin.
+
+* Migrated the Go SDK from Helm v3 to Helm v4 and refreshed all dependencies,
+  clearing two code-reachable advisories (`govulncheck` reports none).
+* Detect the host helm version and emit version-appropriate flags (`--force` on
+  v3, `--force-replace` on v4); drive the `HELM_BIN` provided by the host.
+* Fixed defects: a missing sub-chart weight now defaults to 0 instead of
+  aborting the run; tag matching accepts string values from value files;
+  rendered manifests are split on YAML document boundaries; `--prefix-releases`
+  is validated; `--reset-values` together with `--reuse-values` is rejected.
+* Hardened chart fetching (pure Go, no shell, no current-directory writes) and
+  redacted secret `--set`/`--set-string`/`--set-file` values from debug logs.
+* Reworked readiness gating: typed checks for Deployments, StatefulSets,
+  DaemonSets and Jobs (Jobs honour `.spec.completions` and fail fast on a failed
+  Job), with capped exponential back-off polling.
+* Introduced client interfaces and `context.Context` propagation (SIGINT/SIGTERM
+  cancels in-flight helm/kubectl processes), enabling automated unit and
+  integration tests from zero prior coverage.
+* Added `--output json` to print the weight-ordered deployment plan without
+  contacting the cluster.
+* Added a `helm spray ui` embedded web interface to configure and visualise a
+  deployment.
+* Rewrote the README; added SECURITY and Code of Conduct documents, issue/PR
+  templates, and a CI workflow (build, vet, test, gosec, govulncheck).
+
 ## Version 4.0.13 - 11/27/2024
 * Bump to helm v3.16.3, k8s.io/api v0.31.3, go 1.22, and k8s.io/client-go v0.31.3
 * Fixed [`#92`](https://github.com/ThalesGroup/helm-spray/issues/92) (barmaths)
