@@ -153,12 +153,13 @@ func processIncludeInValuesFile(chart *chart.Chart, verbose bool) (string, error
 						} else {
 							// If it is not an element, then maybe it is directly a value
 							if val, err2 := data.PathValue(subValuePath); err2 == nil {
-								var ok bool
-								if dataToAdd, ok = val.(string); ok == false {
-									return "", fmt.Errorf("finding values matching path \"%s\" in values file \"%s\": %w", subValuePath, includeFileName, err)
+								strVal, ok := val.(string)
+								if !ok {
+									return "", fmt.Errorf("value at path \"%s\" in values file \"%s\" is neither a table nor a string and cannot be included", subValuePath, includeFileName)
 								}
+								dataToAdd = strVal
 							} else {
-								return "", fmt.Errorf("finding values matching path \"%s\" in values file \"%s\": %w", subValuePath, includeFileName, err)
+								return "", fmt.Errorf("finding values matching path \"%s\" in values file \"%s\": %w", subValuePath, includeFileName, err2)
 							}
 						}
 					}

@@ -2,8 +2,10 @@ package dependencies
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/gemalto/helm-spray/v4/internal/log"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
@@ -71,40 +73,26 @@ func Get(chart *chart.Chart, values *common.Values, targets []string, excludes [
 			dependencies[i].HasTags = true
 			for _, tag := range req.Tags {
 				for k, v := range providedTags {
-					if k == tag && v == true {
+					if k == tag && isTagTrue(v) {
 						dependencies[i].AllowedByTags = true
 					}
 				}
 			}
 		}
 
-		// Get weight of the dependency. If no weight is specified, setting it to 0
+		// Weight of the dependency. If no weight is specified, it defaults to 0
+		// (as documented). A genuinely malformed weight is still reported.
 		dependencies[i].Weight = 0
-		weightJson, err := values.PathValue(dependencies[i].UsedName + ".weight")
-		if err != nil {
+		weightValue, err := values.PathValue(dependencies[i].UsedName + ".weight")
+		if err == nil {
+			weight, convErr := toWeight(weightValue)
+			if convErr != nil {
+				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].UsedName, convErr)
+			}
+			dependencies[i].Weight = weight
+		} else if noValue := (common.ErrNoValue{}); !errors.As(err, &noValue) {
 			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].UsedName, err)
 		}
-
-		weightInteger := 0
-		// Depending on the configuration of the json parser, integer can be returned either as Float64 or json.Number
-		if reflect.TypeOf(weightJson).String() == "json.Number" {
-			w, err := weightJson.(json.Number).Int64()
-			if err != nil {
-				return nil, fmt.Errorf("computing weight value for sub-chart \"%s\": %w", dependencies[i].UsedName, err)
-			}
-			weightInteger = int(w)
-
-		} else if reflect.TypeOf(weightJson).String() == "float64" {
-			weightInteger = int(weightJson.(float64))
-
-		} else {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be an integer", dependencies[i].UsedName)
-		}
-
-		if weightInteger < 0 {
-			return nil, fmt.Errorf("computing weight value for sub-chart \"%s\", value shall be positive or equal to zero", dependencies[i].UsedName)
-		}
-		dependencies[i].Weight = weightInteger
 		dependencies[i].CorrespondingReleaseName = releasePrefix + dependencies[i].UsedName
 
 		// Get the AppVersion that is contained in the Chart.yaml file of the dependency sub-chart
@@ -135,4 +123,46 @@ func tags(values *common.Values, verbose bool) map[string]interface{} {
 		}
 	}
 	return providedTags
+}
+
+// isTagTrue reports whether a tag value supplied through values enables the tag.
+// It accepts a boolean true as well as the string spellings understood by
+// strconv.ParseBool (e.g. "true", "True", "1"), so that a tag set in a YAML
+// values file (where it may be parsed as a string) behaves like a tag set via
+// --set (where Helm coerces it to a bool).
+func isTagTrue(v interface{}) bool {
+	switch val := v.(type) {
+	case bool:
+		return val
+	case string:
+		b, err := strconv.ParseBool(strings.TrimSpace(val))
+		return err == nil && b
+	default:
+		return false
+	}
+}
+
+// toWeight converts a weight value parsed from the merged values into a
+// non-negative int. Depending on the YAML/JSON parser the raw value may be a
+// json.Number, a float64 or an int.
+func toWeight(raw interface{}) (int, error) {
+	var weight int
+	switch v := raw.(type) {
+	case json.Number:
+		w, err := v.Int64()
+		if err != nil {
+			return 0, err
+		}
+		weight = int(w)
+	case float64:
+		weight = int(v)
+	case int:
+		weight = v
+	default:
+		return 0, fmt.Errorf("value shall be an integer")
+	}
+	if weight < 0 {
+		return 0, fmt.Errorf("value shall be positive or equal to zero")
+	}
+	return weight, nil
 }
