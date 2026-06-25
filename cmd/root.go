@@ -91,6 +91,11 @@ func NewRootCmd() *cobra.Command {
 		Short:        fmt.Sprintf("upgrade subcharts from an umbrella chart (helm-spray %s)", version),
 		Long:         globalUsage,
 		SilenceUsage: true,
+		// The chart is a positional argument, not a sub-command. Once the "ui"
+		// sub-command is registered, cobra's default validation would otherwise
+		// reject any non-sub-command first argument as an "unknown command", so
+		// arbitrary args are accepted here and validated in RunE.
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 
 			if len(args) == 0 {
