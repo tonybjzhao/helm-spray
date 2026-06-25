@@ -121,6 +121,41 @@ func forceFlag(major int) string {
 	return "--force"
 }
 
+// buildUpgradeArgs assembles the argument vector for "helm upgrade --install"
+// from a request and the detected helm major version. It is separated from the
+// execution so the exact arguments can be asserted in tests.
+func buildUpgradeArgs(req UpgradeRequest, major int) []string {
+	args := []string{"upgrade", "--install", req.ReleaseName, req.ChartPath, "--namespace", req.Namespace, "--timeout", strconv.Itoa(req.Timeout) + "s", "-o", "json"}
+	for _, v := range req.Values {
+		args = append(args, "--set", v)
+	}
+	for _, v := range req.StringValues {
+		args = append(args, "--set-string", v)
+	}
+	for _, v := range req.FileValues {
+		args = append(args, "--set-file", v)
+	}
+	for _, v := range req.ValueFiles {
+		args = append(args, "-f", v)
+	}
+	if req.ResetValues {
+		args = append(args, "--reset-values")
+	}
+	if req.ReuseValues {
+		args = append(args, "--reuse-values")
+	}
+	if req.Force {
+		args = append(args, forceFlag(major))
+	}
+	if req.DryRun {
+		args = append(args, "--dry-run")
+	}
+	if req.CreateNamespace {
+		args = append(args, "--create-namespace")
+	}
+	return args
+}
+
 // List returns the helm releases in the given namespace, keyed by release name.
 func List(ctx context.Context, namespace string, debug bool) (map[string]Release, error) {
 	myargs := []string{"list", "--namespace", namespace, "-o", "json"}
@@ -151,34 +186,7 @@ func List(ctx context.Context, namespace string, debug bool) (map[string]Release
 // UpgradeWithValues runs "helm upgrade --install" for a single release and
 // returns the parsed JSON result (release info and rendered manifest).
 func UpgradeWithValues(ctx context.Context, req UpgradeRequest) (UpgradedRelease, error) {
-	myargs := []string{"upgrade", "--install", req.ReleaseName, req.ChartPath, "--namespace", req.Namespace, "--timeout", strconv.Itoa(req.Timeout) + "s", "-o", "json"}
-	for _, v := range req.Values {
-		myargs = append(myargs, "--set", v)
-	}
-	for _, v := range req.StringValues {
-		myargs = append(myargs, "--set-string", v)
-	}
-	for _, v := range req.FileValues {
-		myargs = append(myargs, "--set-file", v)
-	}
-	for _, v := range req.ValueFiles {
-		myargs = append(myargs, "-f", v)
-	}
-	if req.ResetValues {
-		myargs = append(myargs, "--reset-values")
-	}
-	if req.ReuseValues {
-		myargs = append(myargs, "--reuse-values")
-	}
-	if req.Force {
-		myargs = append(myargs, forceFlag(majorVersion()))
-	}
-	if req.DryRun {
-		myargs = append(myargs, "--dry-run")
-	}
-	if req.CreateNamespace {
-		myargs = append(myargs, "--create-namespace")
-	}
+	myargs := buildUpgradeArgs(req, majorVersion())
 
 	if req.Debug {
 		log.Info(upgradeLogLevel, "running helm command for \"%s\": %v", req.ReleaseName, redactArgs(myargs))
