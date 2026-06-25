@@ -1,32 +1,30 @@
 VERSION := $(shell sed -n -e 's/version:[ "]*\([^"]*\).*/\1/p' plugin.yaml)
 DIST := $(CURDIR)/_dist
-LDFLAGS := "-X main.version=${VERSION}"
-TAR_LINUX := "helm-spray-linux-amd64.tar.gz"
-TAR_WINDOWS := "helm-spray-windows-amd64.tar.gz"
-TAR_DARWIN := "helm-spray-darwin-amd64.tar.gz"
-BINARY_LINUX := "helm-spray"
-BINARY_WINDOWS := "helm-spray.exe"
-BINARY_DARWIN := "helm-spray"
+LDFLAGS := -X github.com/ThalesGroup/helm-spray/v4/cmd.version=$(VERSION)
+GOFLAGS := -trimpath
 
-.PHONY: dist
+.PHONY: dist dist_darwin dist_linux dist_windows package clean
 
 dist: dist_darwin dist_linux dist_windows
 
 dist_darwin:
-	mkdir -p $(DIST)
-	GOOS=darwin GOARCH=amd64 go get -t -v ./...
-	GOOS=darwin GOARCH=amd64 go build -o bin/$(BINARY_DARWIN) -ldflags $(LDFLAGS) main.go
-	tar -czvf $(DIST)/$(TAR_DARWIN) bin README.md LICENSE plugin.yaml
+	$(MAKE) package GOOS=darwin GOARCH=amd64 BIN=helm-spray
+	$(MAKE) package GOOS=darwin GOARCH=arm64 BIN=helm-spray
 
 dist_linux:
-	mkdir -p $(DIST)
-	GOOS=linux GOARCH=amd64 go get -t -v ./...
-	GOOS=linux GOARCH=amd64 go build -o bin/$(BINARY_LINUX) -ldflags $(LDFLAGS) main.go
-	tar -czvf $(DIST)/$(TAR_LINUX) bin README.md LICENSE plugin.yaml
+	$(MAKE) package GOOS=linux GOARCH=amd64 BIN=helm-spray
+	$(MAKE) package GOOS=linux GOARCH=arm64 BIN=helm-spray
 
-.PHONY: dist_windows
 dist_windows:
-	mkdir -p $(DIST)
-	GOOS=windows GOARCH=amd64 go get -t -v ./...
-	GOOS=windows GOARCH=amd64 go build -o bin/$(BINARY_WINDOWS) -ldflags $(LDFLAGS) main.go
-	tar -czvf $(DIST)/${TAR_WINDOWS} bin README.md LICENSE plugin.yaml
+	$(MAKE) package GOOS=windows GOARCH=amd64 BIN=helm-spray.exe
+
+# package builds a single GOOS/GOARCH binary and archives it. Dependencies come
+# from go.mod and are not mutated at build time.
+package:
+	mkdir -p $(DIST) bin
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build $(GOFLAGS) -o bin/$(BIN) -ldflags "$(LDFLAGS)" .
+	tar -czf $(DIST)/helm-spray-$(GOOS)-$(GOARCH).tar.gz bin/$(BIN) README.md LICENSE plugin.yaml
+	rm -f bin/$(BIN)
+
+clean:
+	rm -rf $(DIST) bin
