@@ -134,11 +134,11 @@ func NewRootCmd() *cobra.Command {
 				} else {
 					log.Info(1, "fetching chart from URL \"%s\"...", s.ChartName)
 				}
-				var err error
-				fetchedChartName, err := helm.Fetch(s.ChartName, s.ChartVersion)
+				fetchedChartName, cleanup, err := helm.Fetch(s.ChartName, s.ChartVersion)
 				if err != nil {
 					return fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, err)
 				}
+				defer cleanup()
 				s.ChartName = fetchedChartName
 			} else if _, err := os.Stat(s.ChartName); err != nil {
 				// If local file (or directory) does not exist, then fetch it from a repo.
@@ -147,11 +147,11 @@ func NewRootCmd() *cobra.Command {
 				} else {
 					log.Info(1, "fetching chart \"%s\" from repos...", s.ChartName)
 				}
-				var err error
-				fetchedChartName, err := helm.Fetch(s.ChartName, s.ChartVersion)
+				fetchedChartName, cleanup, err := helm.Fetch(s.ChartName, s.ChartVersion)
 				if err != nil {
 					return fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, err)
 				}
+				defer cleanup()
 				s.ChartName = fetchedChartName
 			} else {
 				log.Info(1, "processing chart from local file or directory \"%s\"...", s.ChartName)
