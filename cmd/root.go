@@ -107,6 +107,16 @@ func NewRootCmd() *cobra.Command {
 
 			s.ChartName = args[0]
 
+			// Resolve the namespace: an explicit --namespace flag wins; otherwise
+			// HELM_NAMESPACE (set by helm for plugins); otherwise "default".
+			if !cmd.Flags().Changed("namespace") {
+				if ns := os.Getenv("HELM_NAMESPACE"); ns != "" {
+					s.Namespace = ns
+				} else {
+					s.Namespace = "default"
+				}
+			}
+
 			if s.ChartVersion != "" {
 				if strings.HasSuffix(s.ChartName, "tgz") {
 					return errors.New("cannot use --version together with chart archive")
@@ -137,32 +147,34 @@ func NewRootCmd() *cobra.Command {
 				return errors.New("cannot use both --reset-values and --reuse-values together")
 			}
 
-			// If chart is specified through an URL, then fetch it from the URL.
+			// Fetch the chart when it is a remote reference or not present locally.
+			// The cleanup must outlive the spray, so it is deferred here in RunE.
+			fetchChart := func(source string) (func(), error) {
+				if s.ChartVersion != "" {
+					log.Info(1, "fetching chart \"%s\" %s with version \"%s\"...", s.ChartName, source, s.ChartVersion)
+				} else {
+					log.Info(1, "fetching chart \"%s\" %s...", s.ChartName, source)
+				}
+				name, cleanup, ferr := helm.Fetch(cmd.Context(), s.ChartName, s.ChartVersion)
+				if ferr != nil {
+					return nil, fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, ferr)
+				}
+				s.ChartName = name
+				return cleanup, nil
+			}
+
 			if strings.HasPrefix(s.ChartName, "http://") || strings.HasPrefix(s.ChartName, "https://") || strings.HasPrefix(s.ChartName, "oci://") {
-				if s.ChartVersion != "" {
-					log.Info(1, "fetching chart from URL \"%s\" with version \"%s\"...", s.ChartName, s.ChartVersion)
-				} else {
-					log.Info(1, "fetching chart from URL \"%s\"...", s.ChartName)
-				}
-				fetchedChartName, cleanup, err := helm.Fetch(cmd.Context(), s.ChartName, s.ChartVersion)
+				cleanup, err := fetchChart("from its URL")
 				if err != nil {
-					return fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, err)
+					return err
 				}
 				defer cleanup()
-				s.ChartName = fetchedChartName
-			} else if _, err := os.Stat(s.ChartName); err != nil {
-				// If local file (or directory) does not exist, then fetch it from a repo.
-				if s.ChartVersion != "" {
-					log.Info(1, "fetching chart \"%s\" from repos with version \"%s\"...", s.ChartName, s.ChartVersion)
-				} else {
-					log.Info(1, "fetching chart \"%s\" from repos...", s.ChartName)
-				}
-				fetchedChartName, cleanup, err := helm.Fetch(cmd.Context(), s.ChartName, s.ChartVersion)
+			} else if _, statErr := os.Stat(s.ChartName); statErr != nil {
+				cleanup, err := fetchChart("from the configured repositories")
 				if err != nil {
-					return fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, err)
+					return err
 				}
 				defer cleanup()
-				s.ChartName = fetchedChartName
 			} else {
 				log.Info(1, "processing chart from local file or directory \"%s\"...", s.ChartName)
 			}
@@ -214,14 +226,6 @@ func NewRootCmd() *cobra.Command {
 	}
 	if s.Debug {
 		s.Verbose = true
-	}
-
-	// When called through helm, namespace is transmitted through the HELM_NAMESPACE envvar
-	namespace := os.Getenv("HELM_NAMESPACE")
-	if len(namespace) > 0 {
-		s.Namespace = namespace
-	} else {
-		s.Namespace = "default"
 	}
 
 	cmd.AddCommand(newUICmd())

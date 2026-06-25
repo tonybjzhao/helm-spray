@@ -49,8 +49,8 @@ func Info(level int, format string, args ...any) {
 	_, _ = fmt.Fprintln(out, prefix+indentForLevel(level)+fmt.Sprintf(format, args...))
 }
 
-// Error writes a "[spray]" error message to the error destination, using
-// fmt.Printf formatting semantics.
+// Error writes an error message to the error destination, using fmt.Printf
+// formatting semantics.
 func Error(format string, args ...any) {
 	_, _ = fmt.Fprintln(errOut, fmt.Sprintf(format, args...))
 }

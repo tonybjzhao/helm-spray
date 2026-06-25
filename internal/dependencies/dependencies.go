@@ -1,3 +1,5 @@
+// Package dependencies derives the per-sub-chart deployment metadata (weight,
+// targeting and tag allowance) from an umbrella chart and the merged values.
 package dependencies
 
 import (

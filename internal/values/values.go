@@ -1,3 +1,5 @@
+// Package values computes an umbrella chart's effective values, including the
+// custom "#! .Files.Get" file-include directives.
 package values
 
 import (
@@ -80,10 +82,11 @@ func Merge(chart *chart.Chart, reuseValues bool, valueOpts *values.Options, verb
 func processIncludeInValuesFile(chart *chart.Chart, verbose bool) (string, error) {
 
 	regularExpressions := []string{
-		// Expression #0: Process file inclusion ".Files.Get" with optional "| indent"
-		// Note: for backward compatibility, ".File.Get" is also allowed
+		// Expression #0: pick a specific element of a file,
+		// "pick (.Files.Get <file>) <tag>", with an optional "| indent".
+		// Note: for backward compatibility, ".File.Get" is also allowed.
 		`#!\s*\{\{\s*pick\s*\(\s*\.Files?\.Get\s+([a-zA-Z0-9_"\\\/\.\-\(\):]+)\s*\)\s*([a-zA-Z0-9_"\.\-]+)\s*(\|\s*indent\s*(\d+))?\s*\}\}\s*(\n|\z)`,
-		// Expression #1: Process file inclusion ".Files.Get", picking a specific element of the file content "pick (.Files.Get <file>) <tag>", with an optional "| indent"
+		// Expression #1: include a whole file, ".Files.Get <file>", with an optional "| indent".
 		`#!\s*\{\{\s*\.Files?\.Get\s+([a-zA-Z0-9_"\\\/\.\-\(\):]+)\s*(\|\s*indent\s*(\d+))?\s*\}\}\s*(\n|\z)`}
 
 	var chartValues string
