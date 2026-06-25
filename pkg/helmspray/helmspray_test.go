@@ -118,6 +118,43 @@ func TestSprayInvalidTargetFailsFast(t *testing.T) {
 	}
 }
 
+func TestCollectWorkloads(t *testing.T) {
+	docs := []string{
+		// Deployment whose annotation legitimately contains a line that is "---".
+		// The document splitter must not break this resource apart (otherwise the
+		// Deployment would fail to decode and not be collected).
+		"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: dep1\n  annotations:\n    banner: |\n      line1\n      ---\n      line2",
+		"apiVersion: apps/v1\nkind: StatefulSet\nmetadata:\n  name: sts1",
+		"apiVersion: apps/v1\nkind: DaemonSet\nmetadata:\n  name: ds1",
+		"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: job1",
+		// A non-workload object that decodes but is not gated.
+		"apiVersion: v1\nkind: Service\nmetadata:\n  name: svc1",
+		// A document that does not decode to a Kubernetes object and must be ignored.
+		"this: is\nnot: a kubernetes object",
+	}
+	manifest := strings.Join(docs, "\n---\n")
+
+	var tier workloads
+	(&Spray{}).collectWorkloads(&tier, manifest)
+
+	eq := func(name string, got []string, want ...string) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Errorf("%s: got %v, want %v", name, got, want)
+			return
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("%s[%d]: got %q, want %q", name, i, got[i], want[i])
+			}
+		}
+	}
+	eq("deployments", tier.deployments, "dep1")
+	eq("statefulSets", tier.statefulSets, "sts1")
+	eq("daemonSets", tier.daemonSets, "ds1")
+	eq("jobs", tier.jobs, "job1")
+}
+
 func TestPlanGroupsByWeight(t *testing.T) {
 	s := &Spray{ChartName: "testdata/umbrella", Namespace: "ns"}
 	plan, err := s.Plan()

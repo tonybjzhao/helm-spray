@@ -20,6 +20,12 @@ var httpProvider = getter.Provider{
 	New:     getter.NewHTTPGetter,
 }
 
+// Merge computes the effective values for an umbrella chart. Unless reuseValues
+// is set, it first processes the "#! .Files.Get" include directives in the
+// chart's default values, then coalesces the result with the sub-chart defaults
+// and overlays the values provided on the command line. It returns the merged
+// values and the processed default-values document (empty when no include
+// directives were present).
 func Merge(chart *chart.Chart, reuseValues bool, valueOpts *values.Options, verbose bool) (common.Values, string, error) {
 	var chartValues common.Values
 	var updatedChartValuesAsString string

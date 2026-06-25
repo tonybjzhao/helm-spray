@@ -12,7 +12,11 @@ import (
 	chart "helm.sh/helm/v4/pkg/chart/v2"
 )
 
-// Dependency ...
+// Dependency is the per-sub-chart metadata helm-spray computes from the umbrella
+// chart and the merged values. UsedName is the alias when one is set, otherwise
+// the chart Name; CorrespondingReleaseName is UsedName with the configured
+// release prefix applied. Targeted reflects --target/--exclude, and
+// AllowedByTags reflects whether the sub-chart's tags are enabled.
 type Dependency struct {
 	Name                     string
 	Alias                    string
@@ -25,6 +29,11 @@ type Dependency struct {
 	AllowedByTags            bool
 }
 
+// Get derives the deployment metadata for every sub-chart declared in the
+// umbrella chart: its name and alias, its weight (defaulting to 0 when unset),
+// whether it is targeted given --target/--exclude, whether its tags are allowed
+// by the provided tag values, its AppVersion, and its release name. It performs
+// no I/O.
 func Get(chart *chart.Chart, values *common.Values, targets []string, excludes []string, releasePrefix string, verbose bool) ([]Dependency, error) {
 	// Compute tags
 	providedTags := tags(values, verbose)

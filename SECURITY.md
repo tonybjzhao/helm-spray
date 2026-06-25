@@ -36,5 +36,7 @@ Please include:
 helm-spray invokes the `helm` and `kubectl` binaries. It uses the `HELM_BIN`
 provided by the host helm, builds all command arguments programmatically (never
 via a shell), keeps fetched charts inside a private temporary directory, and
-redacts `--set`/`--set-string`/`--set-file` values from debug logs. Dependencies
-are scanned with `govulncheck` and the code with `gosec` in CI.
+redacts `--set`/`--set-string`/`--set-file` values from debug logs. Note that
+`--debug` additionally prints the raw helm and kubectl output (including rendered
+manifests), which can contain sensitive values, so enable it only when needed.
+Dependencies are scanned with `govulncheck` and the code with `gosec` in CI.
