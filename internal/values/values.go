@@ -108,16 +108,17 @@ func processIncludeInValuesFile(chart *chart.Chart, verbose bool) (string, error
 
 			match := includeFileNameExp.FindStringSubmatch(chartValues)
 			if len(match) == 0 {
-				break // Break when no regex occurence found
+				break // Break when no regex occurrence found
 			}
 
 			var fullMatch, includeFileName, subValuePath, indent string
-			if expressionNumber == 0 {
+			switch expressionNumber {
+			case 0:
 				fullMatch = match[0]
 				includeFileName = strings.Trim(match[1], `"`)
 				subValuePath = strings.Trim(match[2], `"`)
 				indent = match[4]
-			} else if expressionNumber == 1 {
+			case 1:
 				fullMatch = match[0]
 				includeFileName = strings.Trim(match[1], `"`)
 				subValuePath = ""
@@ -173,14 +174,14 @@ func processIncludeInValuesFile(chart *chart.Chart, verbose bool) (string, error
 					}
 
 					if indent == "" {
-						chartValues = strings.Replace(chartValues, fullMatch, dataToAdd+"\n", -1)
+						chartValues = strings.ReplaceAll(chartValues, fullMatch, dataToAdd+"\n")
 					} else {
 						nbrOfSpaces, err := strconv.Atoi(indent)
 						if err != nil {
 							return "", fmt.Errorf("computing indentation value in \"#! .Files.Get\" clause: %w", err)
 						}
-						dataToAdd := strings.Replace(dataToAdd, "\n", "\n"+strings.Repeat(" ", nbrOfSpaces), -1)
-						chartValues = strings.Replace(chartValues, fullMatch, strings.Repeat(" ", nbrOfSpaces)+dataToAdd+"\n", -1)
+						dataToAdd := strings.ReplaceAll(dataToAdd, "\n", "\n"+strings.Repeat(" ", nbrOfSpaces))
+						chartValues = strings.ReplaceAll(chartValues, fullMatch, strings.Repeat(" ", nbrOfSpaces)+dataToAdd+"\n")
 					}
 					replaced = true
 				}

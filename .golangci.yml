@@ -1,0 +1,42 @@
+# golangci-lint configuration (schema v2).
+# The standard linters (errcheck, govet, ineffassign, staticcheck, unused) run by
+# default; the list below adds higher-signal checks on top. gofmt is enforced both
+# here and as a separate CI step.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - bodyclose      # HTTP/response bodies are closed
+    - copyloopvar    # no aliasing of loop variables
+    - errorlint      # correct error wrapping / comparisons
+    - gocritic       # opinionated correctness/style checks
+    - misspell       # spelling in comments and strings
+    - nilerr         # do not return nil on a non-nil error
+    - prealloc       # preallocate slices where it clearly helps
+    - revive         # broad style/correctness linter
+    - unconvert      # remove redundant type conversions
+    - usestdlibvars  # use stdlib constants (http.MethodGet, etc.)
+  settings:
+    revive:
+      rules:
+        # Exported-symbol doc comments are already maintained; avoid duplicate noise.
+        - name: exported
+          disabled: true
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - prealloc
+          - gocritic
+
+formatters:
+  enable:
+    - gofmt

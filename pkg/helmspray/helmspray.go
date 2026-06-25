@@ -378,7 +378,7 @@ func checkTargetsAndExcludes(deps []dependencies.Dependency, targets []string, e
 	}
 	for _, t := range targets {
 		if !known[t] {
-			return fmt.Errorf("invalid targetted sub-chart name/alias \"%s\"", t)
+			return fmt.Errorf("invalid targeted sub-chart name/alias \"%s\"", t)
 		}
 	}
 	for _, x := range excludes {

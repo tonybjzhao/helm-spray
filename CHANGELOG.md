@@ -41,8 +41,9 @@ Modernisation of helm-spray as a Helm v4 plugin.
   signatures, an SPDX SBOM, and build-provenance attestation; the install script
   now verifies the download against the published checksum.
 * Rewrote the README; added SECURITY and Code of Conduct documents, issue/PR
-  templates, and a CI workflow (build, vet, test, gosec, govulncheck, plus an
-  end-to-end job that runs the integration suite against a kind cluster).
+  templates, and a CI workflow (build, gofmt, vet, test, golangci-lint, gosec,
+  govulncheck, plus an end-to-end job that runs the integration suite against a
+  kind cluster). Added a curated `.golangci.yml` and an `.editorconfig`.
 
 ## Version 4.0.13 - 11/27/2024
 * Bump to helm v3.16.3, k8s.io/api v0.31.3, go 1.22, and k8s.io/client-go v0.31.3

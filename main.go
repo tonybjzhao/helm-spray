@@ -10,13 +10,20 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+// run wires up signal cancellation and executes the root command, returning the
+// process exit code. Keeping os.Exit out of this function's scope ensures the
+// deferred stop() actually runs before the process terminates.
+func run() int {
 	// Cancel the run on SIGINT/SIGTERM so in-flight helm/kubectl child processes
 	// are terminated cleanly via the propagated context.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	rootCmd := cmd.NewRootCmd()
-	if err := rootCmd.ExecuteContext(ctx); err != nil {
-		os.Exit(1)
+	if err := cmd.NewRootCmd().ExecuteContext(ctx); err != nil {
+		return 1
 	}
+	return 0
 }
