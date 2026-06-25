@@ -87,8 +87,8 @@
       <form id="form">
         <div class="field">
           <label for="chart">Umbrella chart</label>
-          <input id="chart" name="chart" placeholder="./path, repo/chart or oci:// URL" required />
-          <div class="hint">A local path is resolved relative to where the server was started.</div>
+          <input id="chart" name="chart" placeholder="./path/to/umbrella-chart" required />
+          <div class="hint">A local chart path (file or directory), resolved relative to where the server was started. Remote repo/OCI references are supported by the <code>helm spray</code> CLI.</div>
         </div>
         <div class="row">
           <div class="field">

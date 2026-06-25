@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 	"github.com/ThalesGroup/helm-spray/v4/pkg/helmspray"
 	cliValues "helm.sh/helm/v4/pkg/cli/values"
 )
+
+// maxRequestBody bounds the size of a /api/plan request body.
+const maxRequestBody = 1 << 20 // 1 MiB
 
 //go:embed web
 var webFS embed.FS
@@ -55,8 +59,20 @@ func Serve(addr string) error {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	if host, _, splitErr := net.SplitHostPort(addr); splitErr != nil || !isLoopback(host) {
+		log.Info(1, "warning: the web UI has no authentication; binding to a non-loopback address (%s) exposes it on the network", addr)
+	}
 	log.Info(1, "helm-spray UI listening on http://%s", addr)
 	return srv.ListenAndServe()
+}
+
+// isLoopback reports whether host is the loopback interface.
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func handlePlan(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +80,7 @@ func handlePlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	var req planRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid request body: %v", err))
