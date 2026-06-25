@@ -88,7 +88,7 @@ func NewRootCmd() *cobra.Command {
 	var output string
 
 	cmd := &cobra.Command{
-		Use:          "helm spray [CHART]",
+		Use:          "spray [CHART]",
 		Short:        fmt.Sprintf("upgrade subcharts from an umbrella chart (helm-spray %s)", version),
 		Long:         globalUsage,
 		SilenceUsage: true,
@@ -147,6 +147,10 @@ func NewRootCmd() *cobra.Command {
 				return errors.New("cannot use both --reset-values and --reuse-values together")
 			}
 
+			if output != "" && output != "json" {
+				return fmt.Errorf("unsupported --output format %q (supported: json)", output)
+			}
+
 			// Fetch the chart when it is a remote reference or not present locally.
 			// The cleanup must outlive the spray, so it is deferred here in RunE.
 			fetchChart := func(source string) (func(), error) {
@@ -190,8 +194,6 @@ func NewRootCmd() *cobra.Command {
 				}
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(encoded))
 				return nil
-			} else if output != "" {
-				return fmt.Errorf("unsupported --output format %q (supported: json)", output)
 			}
 
 			return s.Spray(cmd.Context())
