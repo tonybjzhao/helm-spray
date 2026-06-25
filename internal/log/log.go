@@ -1,63 +1,73 @@
+// Package log provides the small, indented, "[spray]"-prefixed logging used
+// throughout helm-spray. The level passed to Info controls indentation (a
+// presentation concern conveying nesting) rather than severity. The output
+// destinations are package variables so tests can capture what is written.
 package log
 
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
 )
 
-// Log spray messages
-func Info(level int, str string, params ...interface{}) {
-	var logStr = "[spray] "
+// out and errOut are the destinations for Info and Error respectively. They are
+// variables (not hard-wired to os.Stdout/os.Stderr) so tests can redirect them.
+var (
+	out    io.Writer = os.Stdout
+	errOut io.Writer = os.Stderr
+)
 
-	if level == 2 {
-		logStr = logStr + "  > "
-	} else if level == 3 {
-		logStr = logStr + "    o "
-	} else if level == 4 {
-		logStr = logStr + "      - "
-	} else if level >= 5 {
-		logStr = logStr + "        . "
-	}
+const prefix = "[spray] "
 
-	if len(params) != 0 {
-		fmt.Println(logStr + fmt.Sprintf(str, params...))
-	} else {
-		fmt.Println(logStr + str)
+// indentForLevel returns the indentation prefix for a message level. Level 1 is
+// unindented; deeper levels are progressively indented to convey nesting.
+func indentForLevel(level int) string {
+	switch level {
+	case 2:
+		return "  > "
+	case 3:
+		return "    o "
+	case 4:
+		return "      - "
+	default:
+		if level >= 5 {
+			return "        . "
+		}
+		return ""
 	}
 }
 
-func WithNumberedLines(level int, str string, params ...interface{}) {
-	// Number of lines to be printed
+// Info writes an indented, "[spray]"-prefixed message to the info destination,
+// using fmt.Printf formatting semantics. Dynamic content must be passed as an
+// argument (e.g. Info(1, "%s", value)), never embedded in the format string.
+func Info(level int, format string, args ...interface{}) {
+	_, _ = fmt.Fprintln(out, prefix+indentForLevel(level)+fmt.Sprintf(format, args...))
+}
+
+// Error writes a "[spray]" error message to the error destination, using
+// fmt.Printf formatting semantics.
+func Error(format string, args ...interface{}) {
+	_, _ = fmt.Fprintln(errOut, fmt.Sprintf(format, args...))
+}
+
+// WithNumberedLines writes a multi-line string with each line numbered, at the
+// given indentation level. The content is treated as data (never as a format
+// string), so characters such as "%" in the content are printed verbatim.
+func WithNumberedLines(level int, str string) {
 	numberOfLines := strings.Count(str, "\n")
 	if len(str) > 0 && !strings.HasSuffix(str, "\n") {
 		numberOfLines++
 	}
+	width := len(strconv.Itoa(numberOfLines))
+	lineFormat := fmt.Sprintf("[%%%dd] %%s", width)
 
-	// Compute the number of digits corresponding to this number of lines, so that the format of eachline is correct
-	numberOfDigits := 0
-	for numberOfLines != 0 {
-		numberOfLines /= 10
-		numberOfDigits = numberOfDigits + 1
-	}
-	format := "[%" + strconv.Itoa(numberOfDigits) + "d] %s"
-
-	// Print line by line
-	lineNbr := 0
 	scanner := bufio.NewScanner(strings.NewReader(str))
+	lineNbr := 0
 	for scanner.Scan() {
-		Info(level, fmt.Sprintf(format, lineNbr, scanner.Text()), params...)
+		Info(level, lineFormat, lineNbr, scanner.Text())
 		lineNbr++
-	}
-}
-
-// Log error
-func Error(str string, params ...interface{}) {
-	if len(params) != 0 {
-		os.Stderr.WriteString(fmt.Sprintf(str+"\n", params...))
-	} else {
-		os.Stderr.WriteString(str + "\n")
 	}
 }
