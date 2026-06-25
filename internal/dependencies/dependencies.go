@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/gemalto/helm-spray/v4/internal/log"
-	chart "helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/chart/common"
+	chart "helm.sh/helm/v4/pkg/chart/v2"
 )
 
 // Dependency ...

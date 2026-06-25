@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/gemalto/helm-spray/v4/internal/log"
-	chart "helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/chart/common"
 	commonutil "helm.sh/helm/v4/pkg/chart/common/util"
+	chart "helm.sh/helm/v4/pkg/chart/v2"
 	chartutil "helm.sh/helm/v4/pkg/chart/v2/util"
 	"helm.sh/helm/v4/pkg/cli/values"
 	"helm.sh/helm/v4/pkg/getter"
@@ -63,15 +63,14 @@ func Merge(chart *chart.Chart, reuseValues bool, valueOpts *values.Options, verb
 // of the corresponding file.
 // Allows:
 //   - Includeing a file:
-//       #! {{ .Files.Get myfile.yaml }}
+//     #! {{ .Files.Get myfile.yaml }}
 //   - Including a sub-part of a file, picking a specific tag. Tags can target a Yaml element (aka table) or a
-//	   leaf value, but tags cannot target a list item.
-//       #! {{ pick (.Files.Get myfile.yaml) tag }}
+//     leaf value, but tags cannot target a list item.
+//     #! {{ pick (.Files.Get myfile.yaml) tag }}
 //   - Indenting the include content:
-//       #! {{ .Files.Get myfile.yaml | indent 2 }}
+//     #! {{ .Files.Get myfile.yaml | indent 2 }}
 //   - All combined...:
-//       #! {{ pick (.Files.Get "myfile.yaml") "tag.subTag" | indent 4 }}
-//
+//     #! {{ pick (.Files.Get "myfile.yaml") "tag.subTag" | indent 4 }}
 func processIncludeInValuesFile(chart *chart.Chart, verbose bool) (string, error) {
 
 	regularExpressions := []string{

@@ -3,8 +3,8 @@ package dependencies
 import (
 	"testing"
 
-	chart "helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/chart/common"
+	chart "helm.sh/helm/v4/pkg/chart/v2"
 )
 
 // umbrella builds a minimal umbrella chart whose Metadata declares the given
@@ -35,10 +35,10 @@ func TestGetWeightDefaultsToZeroWhenMissing(t *testing.T) {
 
 func TestGetParsesAndValidatesWeight(t *testing.T) {
 	cases := []struct {
-		name      string
-		weight    any
+		name       string
+		weight     any
 		wantWeight int
-		wantErr   bool
+		wantErr    bool
 	}{
 		{"int", 3, 3, false},
 		{"float64", float64(2), 2, false},
