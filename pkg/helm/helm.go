@@ -35,8 +35,8 @@ import (
 
 // UpgradedRelease holds the JSON result of "helm upgrade --install -o json".
 type UpgradedRelease struct {
-	Info     map[string]interface{} `json:"info"`
-	Manifest string                 `json:"manifest"`
+	Info     map[string]any `json:"info"`
+	Manifest string         `json:"manifest"`
 }
 
 // Release describes an existing helm release as reported by "helm list -o json".

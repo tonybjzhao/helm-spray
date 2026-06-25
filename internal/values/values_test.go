@@ -71,17 +71,17 @@ func TestProcessIncludeMissingFileErrors(t *testing.T) {
 }
 
 func TestMergeMapsDeep(t *testing.T) {
-	base := map[string]interface{}{
-		"section": map[string]interface{}{"a": 1, "b": 2},
+	base := map[string]any{
+		"section": map[string]any{"a": 1, "b": 2},
 		"keep":    "yes",
 	}
-	override := map[string]interface{}{
-		"section": map[string]interface{}{"b": 3, "c": 4},
+	override := map[string]any{
+		"section": map[string]any{"b": 3, "c": 4},
 		"add":     "new",
 	}
 	out := mergeMaps(base, override)
 
-	section, ok := out["section"].(map[string]interface{})
+	section, ok := out["section"].(map[string]any)
 	if !ok {
 		t.Fatalf("section is not a map: %T", out["section"])
 	}

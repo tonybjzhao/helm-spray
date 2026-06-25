@@ -167,7 +167,7 @@ func allReady[T any](names []string, items []T, name func(*T) string, ready func
 
 // getList runs "kubectl get <resource> -o json" in the namespace and decodes the
 // result into the provided typed list.
-func getList(ctx context.Context, namespace, resource string, debug bool, into interface{}) error {
+func getList(ctx context.Context, namespace, resource string, debug bool, into any) error {
 	args := []string{"--namespace", namespace, "get", resource, "-o", "json"}
 	if debug {
 		log.Info(3, "running kubectl command: %v", args)

@@ -115,13 +115,13 @@ func Get(chart *chart.Chart, values *common.Values, targets []string, excludes [
 	return dependencies, nil
 }
 
-func tags(values *common.Values, verbose bool) map[string]interface{} {
+func tags(values *common.Values, verbose bool) map[string]any {
 	// Get the list of "tags" specified in the values...
 	// (locally-provided values only; values coming from server are not considered)
 	if verbose {
 		log.Info(1, "looking for \"tags\" in values provided through \"--values/-f\", \"--set\", \"--set-string\", and \"--set-file\"...")
 	}
-	var providedTags map[string]interface{}
+	var providedTags map[string]any
 	tags, err := values.Table("tags")
 	if err == nil {
 		providedTags = tags.AsMap()
@@ -139,7 +139,7 @@ func tags(values *common.Values, verbose bool) map[string]interface{} {
 // strconv.ParseBool (e.g. "true", "True", "1"), so that a tag set in a YAML
 // values file (where it may be parsed as a string) behaves like a tag set via
 // --set (where Helm coerces it to a bool).
-func isTagTrue(v interface{}) bool {
+func isTagTrue(v any) bool {
 	switch val := v.(type) {
 	case bool:
 		return val
@@ -154,7 +154,7 @@ func isTagTrue(v interface{}) bool {
 // toWeight converts a weight value parsed from the merged values into a
 // non-negative int. Depending on the YAML/JSON parser the raw value may be a
 // json.Number, a float64 or an int.
-func toWeight(raw interface{}) (int, error) {
+func toWeight(raw any) (int, error) {
 	var weight int
 	switch v := raw.(type) {
 	case json.Number:

@@ -33,7 +33,7 @@ func Merge(chart *chart.Chart, reuseValues bool, valueOpts *values.Options, verb
 
 	// Get the default values file of the umbrella chart and process the '#! .Files.Get' directives that might be specified in it
 	// Only in case '--reuseValues' has not been set
-	if reuseValues == false {
+	if !reuseValues {
 		updatedChartValuesAsString, err = processIncludeInValuesFile(chart, verbose)
 		if err != nil {
 			return nil, "", fmt.Errorf("processing includes: %w", err)
@@ -192,15 +192,15 @@ func processIncludeInValuesFile(chart *chart.Chart, verbose bool) (string, error
 	return chartValues, nil
 }
 
-func mergeMaps(a, b map[string]interface{}) map[string]interface{} {
-	out := make(map[string]interface{}, len(a))
+func mergeMaps(a, b map[string]any) map[string]any {
+	out := make(map[string]any, len(a))
 	for k, v := range a {
 		out[k] = v
 	}
 	for k, v := range b {
-		if v, ok := v.(map[string]interface{}); ok {
+		if v, ok := v.(map[string]any); ok {
 			if bv, ok := out[k]; ok {
-				if bv, ok := bv.(map[string]interface{}); ok {
+				if bv, ok := bv.(map[string]any); ok {
 					out[k] = mergeMaps(bv, v)
 					continue
 				}

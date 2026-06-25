@@ -45,13 +45,13 @@ func indentForLevel(level int) string {
 // Info writes an indented, "[spray]"-prefixed message to the info destination,
 // using fmt.Printf formatting semantics. Dynamic content must be passed as an
 // argument (e.g. Info(1, "%s", value)), never embedded in the format string.
-func Info(level int, format string, args ...interface{}) {
+func Info(level int, format string, args ...any) {
 	_, _ = fmt.Fprintln(out, prefix+indentForLevel(level)+fmt.Sprintf(format, args...))
 }
 
 // Error writes a "[spray]" error message to the error destination, using
 // fmt.Printf formatting semantics.
-func Error(format string, args ...interface{}) {
+func Error(format string, args ...any) {
 	_, _ = fmt.Fprintln(errOut, fmt.Sprintf(format, args...))
 }
 
