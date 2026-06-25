@@ -86,3 +86,36 @@ func TestUnsupportedOutputFormat(t *testing.T) {
 		t.Fatalf("expected an unsupported-format error, got %v", err)
 	}
 }
+
+func TestParseTimeout(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    int
+		wantErr bool
+	}{
+		{"300", 300, false},  // bare seconds
+		{"300s", 300, false}, // Helm-style duration
+		{"5m", 300, false},   // minutes
+		{"1m30s", 90, false}, // compound duration
+		{"0", 0, false},      // zero is allowed
+		{"", 0, true},        // empty is invalid
+		{"-5", 0, true},      // negative seconds rejected
+		{"-5s", 0, true},     // negative duration rejected
+		{"abc", 0, true},     // not a number or duration
+	}
+	for _, tc := range cases {
+		got, err := parseTimeout(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("parseTimeout(%q): expected an error", tc.in)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parseTimeout(%q): unexpected error %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Errorf("parseTimeout(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}

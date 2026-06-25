@@ -297,7 +297,7 @@ interfere with one another.
       --set-file strings                 set values from files (key=path)
       --set-string strings               set STRING values (key1=val1,key2=val2)
   -t, --target strings                   sub-chart(s) to target (repeatable; default: all)
-      --timeout int                      seconds to wait for readiness per tier (default 300)
+      --timeout string                   wait per tier, as seconds or a duration: 300 or 5m (default "300")
   -f, --values strings                   values file(s) or URL(s) (repeatable)
   -v, --verbose                          enable verbose output
       --version string                   exact chart version to install (default: latest)

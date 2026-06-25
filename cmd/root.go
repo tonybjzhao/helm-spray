@@ -25,7 +25,9 @@ import (
 	"github.com/ThalesGroup/helm-spray/v4/pkg/helmspray"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -87,6 +89,7 @@ func NewRootCmd() *cobra.Command {
 	s := &helmspray.Spray{}
 
 	var output string
+	var timeoutStr string
 
 	cmd := &cobra.Command{
 		Use:          "spray [CHART]",
@@ -144,6 +147,12 @@ func NewRootCmd() *cobra.Command {
 				return fmt.Errorf("unsupported --output format %q (supported: json)", output)
 			}
 
+			secs, terr := parseTimeout(timeoutStr)
+			if terr != nil {
+				return terr
+			}
+			s.Timeout = secs
+
 			// Fetch the chart when it is a remote reference or not present locally.
 			// The cleanup must outlive the spray, so it is deferred here in RunE.
 			cleanup, err := prepareChartSource(cmd.Context(), s)
@@ -185,7 +194,7 @@ func NewRootCmd() *cobra.Command {
 	f.StringArrayVar(&s.ValuesOpts.FileValues, "set-file", []string{}, "set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	f.BoolVar(&s.Force, "force", false, "force resource update through delete/recreate if needed")
 	f.BoolVar(&s.Prune, "prune", false, "after deploying, uninstall releases for sub-charts that are no longer part of the umbrella chart")
-	f.IntVar(&s.Timeout, "timeout", 300, "time in seconds to wait for any individual Kubernetes operation (like Jobs for hooks)\nand for liveness and readiness (like Deployments and regular Jobs completion)")
+	f.StringVar(&timeoutStr, "timeout", "300", "time to wait for any individual Kubernetes operation and for tier\nreadiness, as seconds (e.g. 300) or a Go duration (e.g. 5m, 300s)")
 	f.BoolVar(&s.DryRun, "dry-run", false, "simulate a spray")
 	f.BoolVarP(&s.Verbose, "verbose", "v", false, "enable spray verbose output")
 	f.BoolVar(&s.Debug, "debug", false, "enable helm debug output (also include spray verbose output)")
@@ -221,6 +230,24 @@ func applyHelmDebug(s *helmspray.Spray) {
 	if s.Debug {
 		s.Verbose = true
 	}
+}
+
+// parseTimeout accepts the readiness timeout either as a bare number of seconds
+// (e.g. "300") or as a Go duration (e.g. "5m", "300s"), the spelling Helm itself
+// uses, and returns the value in whole seconds.
+func parseTimeout(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if n, err := strconv.Atoi(s); err == nil {
+		if n < 0 {
+			return 0, errors.New("--timeout must not be negative")
+		}
+		return n, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d < 0 {
+		return 0, fmt.Errorf("invalid --timeout %q: use seconds (e.g. 300) or a duration (e.g. 5m, 300s)", s)
+	}
+	return int(d.Seconds()), nil
 }
 
 // prepareChartSource ensures s.ChartName points at a chart that can be loaded

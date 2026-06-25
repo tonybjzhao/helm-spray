@@ -27,6 +27,8 @@ Modernisation of helm-spray as a Helm v4 plugin.
   integration tests from zero prior coverage.
 * Added `--output json` to print the weight-ordered deployment plan without
   contacting the cluster.
+* `--timeout` now accepts a Helm-style duration (`5m`, `300s`) as well as a bare
+  number of seconds, so the value can be written the same way as for `helm`.
 * Added a `helm spray ui` embedded web interface to configure and visualise a
   deployment, with a read-only live-status view that colours the plan as each
   release reports its helm status, a helm-host version indicator, and a
