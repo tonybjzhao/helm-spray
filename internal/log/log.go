@@ -13,10 +13,12 @@ import (
 	"strings"
 )
 
-// out and errOut are the destinations for Info and Error respectively. They are
-// variables (not hard-wired to os.Stdout/os.Stderr) so tests can redirect them.
+// out and errOut are the destinations for Info and Error. Both default to
+// os.Stderr so that stdout is reserved for machine-readable output (for example
+// the "--output json" deployment plan). They are variables so tests can capture
+// what is written.
 var (
-	out    io.Writer = os.Stdout
+	out    io.Writer = os.Stderr
 	errOut io.Writer = os.Stderr
 )
 

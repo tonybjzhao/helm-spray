@@ -228,7 +228,9 @@ func Fetch(ctx context.Context, chart string, version string) (string, func(), e
 		args = append(args, "--version", version)
 	}
 	cmd := exec.CommandContext(ctx, binary(), args...) // #nosec G204 -- HELM_BIN (set by the helm host) or "helm"; args built internally, no shell
-	cmd.Stdout = os.Stdout
+	// "helm pull" progress is diagnostic; send it to stderr so stdout stays clean
+	// for machine-readable output.
+	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		cleanup()

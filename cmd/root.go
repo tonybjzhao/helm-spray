@@ -50,11 +50,12 @@ nor '--set', use '--set-file' to read the single large value from file.
 
 You can specify the '--values'/'-f' flag several times or provide a single comma separated value.
 You can specify the '--set' flag several times or provide a single comma separated value.
-Helm Spray does not support Helm Conditions, but supports Helm Tags, with some restrictions.
+Helm Spray reserves Helm Conditions for its own use ('<chart name or alias>.enabled')
+and supports Helm Tags, with some restrictions.
 
-To check the generated manifests of a release without installing the chart,
-the '--debug' and '--dry-run' flags can be combined. This will still require a
-round-trip to the Tiller server.
+To preview a release's rendered manifests without installing it, combine the
+'--debug' and '--dry-run' flags. To preview the whole solution's weight-ordered
+deployment plan without contacting the cluster, use '--output json'.
 
 There are four different ways you can express the chart you want to install:
 
@@ -186,6 +187,7 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	f := cmd.Flags()
+	f.StringVarP(&s.Namespace, "namespace", "n", "", "namespace to spray the chart into (overrides the HELM_NAMESPACE environment variable; defaults to \"default\")")
 	f.StringVarP(&s.ChartVersion, "version", "", "", "specify the exact chart version to install. If this is not specified, the latest version is installed")
 	f.StringSliceVarP(&s.Targets, "target", "t", []string{}, "specify the subchart to target (can specify multiple). If '--target' is not specified, all subcharts are targeted")
 	f.StringSliceVarP(&s.Excludes, "exclude", "x", []string{}, "specify the subchart to exclude (can specify multiple): process all subcharts except the ones specified in '--exclude'")

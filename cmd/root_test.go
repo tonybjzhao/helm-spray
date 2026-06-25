@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"strings"
 	"testing"
@@ -40,5 +42,40 @@ func TestArgumentAndFlagValidation(t *testing.T) {
 				t.Errorf("error = %q, want it to contain %q", err.Error(), tc.want)
 			}
 		})
+	}
+}
+
+// --output json must write only the JSON document to stdout (diagnostics go to
+// stderr), so the output is directly machine-parseable.
+func TestOutputJSONStdoutIsPureJSON(t *testing.T) {
+	c := NewRootCmd()
+	var stdout bytes.Buffer
+	c.SetOut(&stdout)
+	c.SetErr(io.Discard)
+	c.SetArgs([]string{"--output", "json", "../pkg/helmspray/testdata/umbrella"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	var plan struct {
+		Tiers []struct {
+			Weight int `json:"weight"`
+		} `json:"tiers"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &plan); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\nstdout was:\n%s", err, stdout.String())
+	}
+	if len(plan.Tiers) == 0 {
+		t.Error("expected at least one weight tier in the plan")
+	}
+}
+
+// The documented --namespace/-n flag must exist on the root command.
+func TestNamespaceFlagRegistered(t *testing.T) {
+	f := NewRootCmd().Flags().Lookup("namespace")
+	if f == nil {
+		t.Fatal("--namespace flag is not registered")
+	}
+	if f.Shorthand != "n" {
+		t.Errorf("--namespace shorthand = %q, want \"n\"", f.Shorthand)
 	}
 }
