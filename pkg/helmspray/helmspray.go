@@ -1,25 +1,34 @@
 package helmspray
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"text/tabwriter"
+	"time"
+
 	"github.com/gemalto/helm-spray/v4/internal/dependencies"
 	"github.com/gemalto/helm-spray/v4/internal/log"
 	"github.com/gemalto/helm-spray/v4/internal/values"
 	"github.com/gemalto/helm-spray/v4/pkg/helm"
-	"github.com/gemalto/helm-spray/v4/pkg/kubectl"
 	"github.com/gemalto/helm-spray/v4/pkg/util"
 	loader "helm.sh/helm/v4/pkg/chart/v2/loader"
 	cliValues "helm.sh/helm/v4/pkg/cli/values"
-	"io/ioutil"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/client-go/kubernetes/scheme"
-	"os"
-	"regexp"
-	"strconv"
-	"text/tabwriter"
-	"time"
+)
+
+const (
+	// statusDeployed is the helm release status indicating a successful upgrade.
+	statusDeployed = "deployed"
+	// minPollInterval and maxPollInterval bound the readiness back-off polling.
+	minPollInterval = 1 * time.Second
+	maxPollInterval = 5 * time.Second
 )
 
 // documentSeparator matches a YAML document boundary: a line consisting solely
@@ -27,6 +36,9 @@ import (
 // content legitimately contains that sequence.
 var documentSeparator = regexp.MustCompile("(?m)^---$")
 
+// Spray holds the configuration of a spray run and the clients used to perform
+// it. The helm and readiness clients default to CLI-backed implementations and
+// can be overridden (e.g. in tests).
 type Spray struct {
 	ChartName                   string
 	ChartVersion                string
@@ -44,21 +56,37 @@ type Spray struct {
 	DryRun                      bool
 	Verbose                     bool
 	Debug                       bool
-	deployments                 []string
-	statefulSets                []string
-	jobs                        []string
+
+	helmClient HelmClient
+	readiness  ReadinessChecker
 }
 
-// Spray ...
-func (s *Spray) Spray() error {
+// workloads collects the names of the workloads created by the releases of a
+// single weight tier, grouped by kind, so readiness can be gated per tier.
+type workloads struct {
+	deployments  []string
+	statefulSets []string
+	daemonSets   []string
+	jobs         []string
+}
+
+// Spray installs or upgrades the sub-charts of the umbrella chart in ascending
+// weight order, one release per sub-chart, waiting for each tier to become ready
+// before processing the next.
+func (s *Spray) Spray(ctx context.Context) error {
+	if s.helmClient == nil {
+		s.helmClient = execHelmClient{}
+	}
+	if s.readiness == nil {
+		s.readiness = execReadinessChecker{}
+	}
 
 	if s.Debug {
 		log.Info(1, "starting spray with flags: %+v", s)
 	}
-
 	startTime := time.Now()
 
-	// Load and validate the umbrella chart...
+	// Load and validate the umbrella chart.
 	chart, err := loader.Load(s.ChartName)
 	if err != nil {
 		return fmt.Errorf("loading chart \"%s\": %w", s.ChartName, err)
@@ -69,14 +97,14 @@ func (s *Spray) Spray() error {
 		return fmt.Errorf("merging values: %w", err)
 	}
 	if len(updatedChartValuesAsString) > 0 {
-		// Write default values to a temporary file and add it to the list of values files,
-		// for later usage during the calls to helm
-		tempDir, err := ioutil.TempDir("", "spray-")
+		// Write the processed default values to a temporary file and prepend it
+		// to the value files passed to helm.
+		tempDir, err := os.MkdirTemp("", "spray-")
 		if err != nil {
 			return fmt.Errorf("creating temporary directory to write updated default values file for umbrella chart: %w", err)
 		}
 		defer removeTempDir(tempDir)
-		tempFile, err := ioutil.TempFile(tempDir, "updatedDefaultValues-*.yaml")
+		tempFile, err := os.CreateTemp(tempDir, "updatedDefaultValues-*.yaml")
 		if err != nil {
 			return fmt.Errorf("creating temporary file to write updated default values file for umbrella chart: %w", err)
 		}
@@ -84,12 +112,10 @@ func (s *Spray) Spray() error {
 		if _, err = tempFile.Write([]byte(updatedChartValuesAsString)); err != nil {
 			return fmt.Errorf("writing updated default values file for umbrella chart into temporary file: %w", err)
 		}
-		err = tempFile.Close()
-		if err != nil {
+		if err = tempFile.Close(); err != nil {
 			return fmt.Errorf("closing temporary file to write updated default values file for umbrella chart: %w", err)
 		}
-		prependArray := []string{tempFile.Name()}
-		s.ValuesOpts.ValueFiles = append(prependArray, s.ValuesOpts.ValueFiles...)
+		s.ValuesOpts.ValueFiles = append([]string{tempFile.Name()}, s.ValuesOpts.ValueFiles...)
 	}
 
 	releasePrefix := ""
@@ -98,6 +124,7 @@ func (s *Spray) Spray() error {
 	} else if len(s.PrefixReleases) > 0 {
 		releasePrefix = s.PrefixReleases + "-"
 	}
+
 	deps, err := dependencies.Get(chart, &mergedValues, s.Targets, s.Excludes, releasePrefix, s.Verbose)
 	if err != nil {
 		return fmt.Errorf("analyzing dependencies: %w", err)
@@ -109,253 +136,237 @@ func (s *Spray) Spray() error {
 		return fmt.Errorf("checking targets and excludes: %w", err)
 	}
 
-	// Starting the processing...
 	if len(releasePrefix) > 0 {
 		log.Info(1, "deploying solution chart \"%s\" in namespace \"%s\", with release prefix \"%s\"", s.ChartName, s.Namespace, releasePrefix)
 	} else {
 		log.Info(1, "deploying solution chart \"%s\" in namespace \"%s\"", s.ChartName, s.Namespace)
 	}
 
-	releases, err := helm.List(1, s.Namespace, s.Debug)
+	releases, err := s.helmClient.List(ctx, s.Namespace, s.Debug)
 	if err != nil {
 		return fmt.Errorf("listing releases: %w", err)
 	}
-
 	if s.Verbose {
 		logRelease(releases, deps)
 	}
 
-	// Loop on the increasing weight
-	for i := 0; i <= maxWeight(deps); i++ {
-		shouldWait, err := s.upgrade(releases, deps, i)
+	// Pre-compute the "<name>.enabled=false" set once. Each upgrade re-enables
+	// only its own sub-chart by appending a later (higher-priority) --set, so the
+	// per-release set construction is O(1) rather than O(n) per release.
+	disabled := make([]string, 0, len(deps))
+	for _, d := range deps {
+		disabled = append(disabled, d.UsedName+".enabled=false")
+	}
+	disableAllSet := strings.Join(disabled, ",")
+
+	// Process sub-charts by ascending weight; gate each tier before the next.
+	for weight := 0; weight <= maxWeight(deps); weight++ {
+		tier, shouldWait, err := s.upgrade(ctx, releases, deps, weight, disableAllSet)
 		if err != nil {
 			return err
 		}
-		// Wait availability of the just upgraded Releases
 		if shouldWait && !s.DryRun {
-			err = s.wait()
-			if err != nil {
+			if err = s.wait(ctx, tier); err != nil {
 				return err
 			}
 		}
 	}
 
 	log.Info(1, "upgrade of solution chart \"%s\" completed in %s", s.ChartName, util.Duration(time.Since(startTime)))
-
 	return nil
 }
 
-func (s *Spray) upgrade(releases map[string]helm.Release, deps []dependencies.Dependency, currentWeight int) (bool, error) {
+// upgrade installs or upgrades every targeted, tag-allowed sub-chart at the given
+// weight and returns the workloads they created (for readiness gating) and
+// whether anything was upgraded.
+func (s *Spray) upgrade(ctx context.Context, releases map[string]helm.Release, deps []dependencies.Dependency, currentWeight int, disableAllSet string) (workloads, bool, error) {
+	var tier workloads
 	shouldWait := false
 	firstInWeight := true
-	// Upgrade the targeted Deployments corresponding the the current weight
+
 	for _, dependency := range deps {
-		if dependency.Targeted && dependency.AllowedByTags == true {
-			if dependency.Weight == currentWeight {
-				if firstInWeight {
-					log.Info(1, "processing sub-charts of weight %d", dependency.Weight)
-					firstInWeight = false
-					s.deployments = make([]string, 0)
-					s.statefulSets = make([]string, 0)
-					s.jobs = make([]string, 0)
-				}
-
-				if release, ok := releases[dependency.CorrespondingReleaseName]; ok {
-					oldRevision, _ := strconv.Atoi(release.Revision)
-					log.Info(2, "upgrading release \"%s\": going from revision %d (status %s) to %d (appVersion %s)...", dependency.CorrespondingReleaseName, oldRevision, release.Status, oldRevision+1, dependency.AppVersion)
-
-				} else {
-					log.Info(2, "upgrading release \"%s\": deploying first revision (appVersion %s)...", dependency.CorrespondingReleaseName, dependency.AppVersion)
-				}
-
-				shouldWait = true
-
-				// Add the "<dependency>.enabled" flags to ensure that only the current chart is to be executed
-				depValuesSet := ""
-				for _, dep := range deps {
-					if dep.UsedName == dependency.UsedName {
-						depValuesSet = depValuesSet + dep.UsedName + ".enabled=true,"
-					} else {
-						depValuesSet = depValuesSet + dep.UsedName + ".enabled=false,"
-					}
-				}
-				var valuesSet []string
-				valuesSet = append(valuesSet, s.ValuesOpts.Values...)
-				valuesSet = append(valuesSet, depValuesSet)
-
-				// Upgrade the Deployment
-				upgradedRelease, err := helm.UpgradeWithValues(3,
-					s.Namespace,
-					s.CreateNamespace,
-					dependency.CorrespondingReleaseName,
-					s.ChartName,
-					s.ResetValues,
-					s.ReuseValues,
-					s.ValuesOpts.ValueFiles,
-					valuesSet,
-					s.ValuesOpts.StringValues,
-					s.ValuesOpts.FileValues,
-					s.Force,
-					s.Timeout,
-					s.DryRun,
-					s.Debug,
-				)
-				if err != nil {
-					return false, fmt.Errorf("calling helm upgrade: %w", err)
-				}
-
-				log.Info(3, "release: \"%s\" upgraded", dependency.CorrespondingReleaseName)
-
-				if s.Verbose {
-					log.Info(3, "helm status: %s", upgradedRelease.Info["status"])
-				}
-				if !s.DryRun && upgradedRelease.Info["status"] != "deployed" {
-					return false, errors.New("status returned by helm differs from \"deployed\", spray interrupted")
-				}
-
-				ignoredParts := make([]string, 0)
-				for _, yaml := range documentSeparator.Split(upgradedRelease.Manifest, -1) {
-					manifest, _, err := scheme.Codecs.UniversalDeserializer().Decode([]byte(yaml), nil, nil)
-					if err != nil && len(yaml) > 0 {
-						ignoredParts = append(ignoredParts, yaml)
-					}
-					deployment, ok := manifest.(*appsv1.Deployment)
-					if ok {
-						s.deployments = append(s.deployments, deployment.Name)
-					}
-					statefulSet, ok := manifest.(*appsv1.StatefulSet)
-					if ok {
-						s.statefulSets = append(s.statefulSets, statefulSet.Name)
-					}
-					job, ok := manifest.(*batchv1.Job)
-					if ok {
-						s.jobs = append(s.jobs, job.Name)
-					}
-				}
-
-				if s.Verbose {
-					if len(ignoredParts) > 0 {
-						log.Info(3, "warning: ignored part(s) of helm upgrade output")
-						if s.Debug {
-							log.Info(3, "warning: ignored '%v'", ignoredParts)
-						}
-					}
-					if len(s.deployments) > 0 {
-						log.Info(3, "release deployments: %v", s.deployments)
-					}
-					if len(s.statefulSets) > 0 {
-						log.Info(3, "release statefulsets: %v", s.statefulSets)
-					}
-					if len(s.jobs) > 0 {
-						log.Info(3, "release jobs: %v", s.jobs)
-					}
-				}
-			}
+		if !dependency.Targeted || !dependency.AllowedByTags || dependency.Weight != currentWeight {
+			continue
 		}
+		if firstInWeight {
+			log.Info(1, "processing sub-charts of weight %d", dependency.Weight)
+			firstInWeight = false
+		}
+
+		if release, ok := releases[dependency.CorrespondingReleaseName]; ok {
+			oldRevision, _ := strconv.Atoi(release.Revision)
+			log.Info(2, "upgrading release \"%s\": going from revision %d (status %s) to %d (appVersion %s)...", dependency.CorrespondingReleaseName, oldRevision, release.Status, oldRevision+1, dependency.AppVersion)
+		} else {
+			log.Info(2, "upgrading release \"%s\": deploying first revision (appVersion %s)...", dependency.CorrespondingReleaseName, dependency.AppVersion)
+		}
+
+		shouldWait = true
+
+		// Enable only the current sub-chart: all charts are disabled, then this
+		// one is re-enabled by a later (higher-priority) --set.
+		valuesSet := make([]string, 0, len(s.ValuesOpts.Values)+2)
+		valuesSet = append(valuesSet, s.ValuesOpts.Values...)
+		if disableAllSet != "" {
+			valuesSet = append(valuesSet, disableAllSet)
+		}
+		valuesSet = append(valuesSet, dependency.UsedName+".enabled=true")
+
+		upgradedRelease, err := s.helmClient.Upgrade(ctx, helm.UpgradeRequest{
+			Namespace:       s.Namespace,
+			CreateNamespace: s.CreateNamespace,
+			ReleaseName:     dependency.CorrespondingReleaseName,
+			ChartPath:       s.ChartName,
+			ResetValues:     s.ResetValues,
+			ReuseValues:     s.ReuseValues,
+			ValueFiles:      s.ValuesOpts.ValueFiles,
+			Values:          valuesSet,
+			StringValues:    s.ValuesOpts.StringValues,
+			FileValues:      s.ValuesOpts.FileValues,
+			Force:           s.Force,
+			Timeout:         s.Timeout,
+			DryRun:          s.DryRun,
+			Debug:           s.Debug,
+		})
+		if err != nil {
+			return workloads{}, false, fmt.Errorf("calling helm upgrade: %w", err)
+		}
+
+		log.Info(3, "release: \"%s\" upgraded", dependency.CorrespondingReleaseName)
+		if s.Verbose {
+			log.Info(3, "helm status: %s", upgradedRelease.Info["status"])
+		}
+		if !s.DryRun && upgradedRelease.Info["status"] != statusDeployed {
+			return workloads{}, false, errors.New("status returned by helm differs from \"deployed\", spray interrupted")
+		}
+
+		s.collectWorkloads(&tier, upgradedRelease.Manifest)
 	}
-	return shouldWait, nil
+
+	return tier, shouldWait, nil
 }
 
-func (s *Spray) wait() error {
+// collectWorkloads decodes the rendered manifest and records the names of the
+// workloads whose readiness gates tier progression.
+func (s *Spray) collectWorkloads(tier *workloads, manifest string) {
+	var ignoredParts []string
+	for _, doc := range documentSeparator.Split(manifest, -1) {
+		obj, _, err := scheme.Codecs.UniversalDeserializer().Decode([]byte(doc), nil, nil)
+		if err != nil {
+			if s.Verbose && len(strings.TrimSpace(doc)) > 0 {
+				ignoredParts = append(ignoredParts, doc)
+			}
+			continue
+		}
+		switch o := obj.(type) {
+		case *appsv1.Deployment:
+			tier.deployments = append(tier.deployments, o.Name)
+		case *appsv1.StatefulSet:
+			tier.statefulSets = append(tier.statefulSets, o.Name)
+		case *appsv1.DaemonSet:
+			tier.daemonSets = append(tier.daemonSets, o.Name)
+		case *batchv1.Job:
+			tier.jobs = append(tier.jobs, o.Name)
+		}
+	}
+	if s.Verbose && len(ignoredParts) > 0 {
+		log.Info(3, "warning: ignored part(s) of helm upgrade output")
+		if s.Debug {
+			log.Info(3, "warning: ignored '%v'", ignoredParts)
+		}
+	}
+}
+
+// wait blocks until every workload in the tier is ready, the timeout elapses, or
+// the context is cancelled. It polls with capped exponential back-off.
+func (s *Spray) wait(ctx context.Context, tier workloads) error {
 	log.Info(2, "waiting for liveness and readiness...")
 
-	sleepTime := 5
-	doneDeployments := false
-	doneStatefulSets := false
-	doneJobs := false
-
-	// Wait for completion of the Deployments/StatefulSets/Jobs
-	for i := 0; i < s.Timeout; {
-		if len(s.deployments) > 0 && !doneDeployments {
-			if s.Verbose {
-				log.Info(3, "waiting for deployments %v", s.deployments)
-			}
-			var err error
-			doneDeployments, err = kubectl.AreDeploymentsReady(s.deployments, s.Namespace, s.Debug)
-			if err != nil {
-				return fmt.Errorf("cannot check readiness of %v: %w", s.deployments, err)
-			}
-		} else {
-			doneDeployments = true
-		}
-		if len(s.statefulSets) > 0 && !doneStatefulSets {
-			if s.Verbose {
-				log.Info(3, "waiting for statefulsets %v", s.statefulSets)
-			}
-			var err error
-			doneStatefulSets, err = kubectl.AreStatefulSetsReady(s.statefulSets, s.Namespace, s.Debug)
-			if err != nil {
-				return fmt.Errorf("cannot check readiness of %v: %w", s.statefulSets, err)
-			}
-		} else {
-			doneStatefulSets = true
-		}
-		if len(s.jobs) > 0 && !doneJobs {
-			if s.Verbose {
-				log.Info(3, "waiting for jobs %v", s.jobs)
-			}
-			var err error
-			doneJobs, err = kubectl.AreJobsReady(s.jobs, s.Namespace, s.Debug)
-			if err != nil {
-				return fmt.Errorf("cannot check readiness of %v: %w", s.jobs, err)
-			}
-		} else {
-			doneJobs = true
-		}
-		if doneDeployments && doneStatefulSets && doneJobs {
-			break
-		}
-		time.Sleep(time.Duration(sleepTime) * time.Second)
-		i = i + sleepTime
+	type check struct {
+		kind  string
+		names []string
+		fn    func(context.Context, []string, string, bool) (bool, error)
 	}
-
-	if !doneDeployments || !doneStatefulSets || !doneJobs {
-		return errors.New("timed out waiting for liveness and readiness")
+	checks := []check{
+		{"deployments", tier.deployments, s.readiness.DeploymentsReady},
+		{"statefulsets", tier.statefulSets, s.readiness.StatefulSetsReady},
+		{"daemonsets", tier.daemonSets, s.readiness.DaemonSetsReady},
+		{"jobs", tier.jobs, s.readiness.JobsReady},
 	}
+	done := make([]bool, len(checks))
 
-	return nil
+	deadline := time.Now().Add(time.Duration(s.Timeout) * time.Second)
+	interval := minPollInterval
+	for {
+		for i := range checks {
+			if done[i] || len(checks[i].names) == 0 {
+				done[i] = true
+				continue
+			}
+			if s.Verbose {
+				log.Info(3, "waiting for %s %v", checks[i].kind, checks[i].names)
+			}
+			ready, err := checks[i].fn(ctx, checks[i].names, s.Namespace, s.Debug)
+			if err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return fmt.Errorf("cannot check readiness of %s %v: %w", checks[i].kind, checks[i].names, err)
+			}
+			done[i] = ready
+		}
+		if allTrue(done) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return errors.New("timed out waiting for liveness and readiness")
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+		if interval < maxPollInterval {
+			if interval *= 2; interval > maxPollInterval {
+				interval = maxPollInterval
+			}
+		}
+	}
 }
 
-// Retrieve the highest chart.weight in values.yaml
-func maxWeight(deps []dependencies.Dependency) (m int) {
-	if len(deps) > 0 {
-		m = deps[0].Weight
+func allTrue(b []bool) bool {
+	for _, v := range b {
+		if !v {
+			return false
+		}
 	}
-	for i := 1; i < len(deps); i++ {
-		if deps[i].Weight > m {
-			m = deps[i].Weight
+	return true
+}
+
+// maxWeight returns the highest weight among the dependencies.
+func maxWeight(deps []dependencies.Dependency) (m int) {
+	for i, d := range deps {
+		if i == 0 || d.Weight > m {
+			m = d.Weight
 		}
 	}
 	return m
 }
 
 func checkTargetsAndExcludes(deps []dependencies.Dependency, targets []string, excludes []string) error {
-	// Check that the provided target(s) or exclude(s) correspond to valid sub-chart names or alias
-	if len(targets) > 0 {
-		for i := range targets {
-			found := false
-			for _, dependency := range deps {
-				if targets[i] == dependency.UsedName {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("invalid targetted sub-chart name/alias \"%s\"", targets[i])
-			}
+	// Check that the provided target(s) or exclude(s) correspond to valid
+	// sub-chart names or aliases.
+	known := make(map[string]bool, len(deps))
+	for _, d := range deps {
+		known[d.UsedName] = true
+	}
+	for _, t := range targets {
+		if !known[t] {
+			return fmt.Errorf("invalid targetted sub-chart name/alias \"%s\"", t)
 		}
-	} else if len(excludes) > 0 {
-		for i := range excludes {
-			found := false
-			for _, dependency := range deps {
-				if excludes[i] == dependency.UsedName {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return fmt.Errorf("invalid excluded sub-chart name/alias \"%s\"", excludes[i])
-			}
+	}
+	for _, x := range excludes {
+		if !known[x] {
+			return fmt.Errorf("invalid excluded sub-chart name/alias \"%s\"", x)
 		}
 	}
 	return nil
@@ -382,13 +393,13 @@ func logRelease(releases map[string]helm.Release, deps []dependencies.Dependency
 		}
 
 		targeted := fmt.Sprint(dependency.Targeted)
-		if dependency.Targeted && dependency.HasTags && (dependency.AllowedByTags == true) {
+		if dependency.Targeted && dependency.HasTags && dependency.AllowedByTags {
 			targeted = "true (tag match)"
-		} else if dependency.Targeted && dependency.HasTags && (dependency.AllowedByTags == false) {
+		} else if dependency.Targeted && dependency.HasTags && !dependency.AllowedByTags {
 			targeted = "false (no tag match)"
 		}
 
-		_, _ = fmt.Fprintln(w, fmt.Sprintf("[spray]  \t %s\t %s\t %s\t %d\t| %s\t %s\t %s\t", name, alias, targeted, dependency.Weight, dependency.CorrespondingReleaseName, currentRevision, currentStatus))
+		_, _ = fmt.Fprintf(w, "[spray]  \t %s\t %s\t %s\t %d\t| %s\t %s\t %s\t\n", name, alias, targeted, dependency.Weight, dependency.CorrespondingReleaseName, currentRevision, currentStatus)
 	}
 	_ = w.Flush()
 }

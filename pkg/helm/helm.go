@@ -14,11 +14,13 @@ limitations under the License.
 // Package helm wraps the helm command-line interface. helm-spray drives the
 // same helm binary that invoked it (via the HELM_BIN environment variable that
 // helm exports to its plugins) and adapts to the differences between the
-// supported helm major versions.
+// supported helm major versions. All invocations honour the supplied
+// context.Context so a cancelled run terminates in-flight helm processes.
 package helm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -47,6 +49,31 @@ type Release struct {
 	AppVersion string `json:"app_version"`
 	Namespace  string `json:"namespace"`
 }
+
+// UpgradeRequest carries the inputs of a single "helm upgrade --install".
+type UpgradeRequest struct {
+	Namespace       string
+	CreateNamespace bool
+	ReleaseName     string
+	ChartPath       string
+	ResetValues     bool
+	ReuseValues     bool
+	ValueFiles      []string
+	Values          []string
+	StringValues    []string
+	FileValues      []string
+	Force           bool
+	Timeout         int
+	DryRun          bool
+	Debug           bool
+}
+
+const (
+	// listLogLevel and upgradeLogLevel are the spray log indentation levels used
+	// for helm command tracing.
+	listLogLevel    = 1
+	upgradeLogLevel = 3
+)
 
 var (
 	helmVersionOnce sync.Once
@@ -95,15 +122,15 @@ func forceFlag(major int) string {
 }
 
 // List returns the helm releases in the given namespace, keyed by release name.
-func List(level int, namespace string, debug bool) (map[string]Release, error) {
+func List(ctx context.Context, namespace string, debug bool) (map[string]Release, error) {
 	myargs := []string{"list", "--namespace", namespace, "-o", "json"}
 
 	if debug {
-		log.Info(level, "running helm command : %v", myargs)
+		log.Info(listLogLevel, "running helm command : %v", myargs)
 	}
-	output, err := run(myargs)
+	output, err := run(ctx, myargs)
 	if debug {
-		log.Info(level, "helm command returned:\n%s", string(output))
+		log.Info(listLogLevel, "helm command returned:\n%s", string(output))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("running helm list in namespace %q: %w", namespace, err)
@@ -123,50 +150,50 @@ func List(level int, namespace string, debug bool) (map[string]Release, error) {
 
 // UpgradeWithValues runs "helm upgrade --install" for a single release and
 // returns the parsed JSON result (release info and rendered manifest).
-func UpgradeWithValues(level int, namespace string, createNamespace bool, releaseName string, chartPath string, resetValues bool, reuseValues bool, valueFiles []string, valuesSet []string, valuesSetString []string, valuesSetFile []string, force bool, timeout int, dryRun bool, debug bool) (UpgradedRelease, error) {
-	myargs := []string{"upgrade", "--install", releaseName, chartPath, "--namespace", namespace, "--timeout", strconv.Itoa(timeout) + "s", "-o", "json"}
-	for _, v := range valuesSet {
+func UpgradeWithValues(ctx context.Context, req UpgradeRequest) (UpgradedRelease, error) {
+	myargs := []string{"upgrade", "--install", req.ReleaseName, req.ChartPath, "--namespace", req.Namespace, "--timeout", strconv.Itoa(req.Timeout) + "s", "-o", "json"}
+	for _, v := range req.Values {
 		myargs = append(myargs, "--set", v)
 	}
-	for _, v := range valuesSetString {
+	for _, v := range req.StringValues {
 		myargs = append(myargs, "--set-string", v)
 	}
-	for _, v := range valuesSetFile {
+	for _, v := range req.FileValues {
 		myargs = append(myargs, "--set-file", v)
 	}
-	for _, v := range valueFiles {
+	for _, v := range req.ValueFiles {
 		myargs = append(myargs, "-f", v)
 	}
-	if resetValues {
+	if req.ResetValues {
 		myargs = append(myargs, "--reset-values")
 	}
-	if reuseValues {
+	if req.ReuseValues {
 		myargs = append(myargs, "--reuse-values")
 	}
-	if force {
+	if req.Force {
 		myargs = append(myargs, forceFlag(majorVersion()))
 	}
-	if dryRun {
+	if req.DryRun {
 		myargs = append(myargs, "--dry-run")
 	}
-	if createNamespace {
+	if req.CreateNamespace {
 		myargs = append(myargs, "--create-namespace")
 	}
 
-	if debug {
-		log.Info(level, "running helm command for \"%s\": %v", releaseName, redactArgs(myargs))
+	if req.Debug {
+		log.Info(upgradeLogLevel, "running helm command for \"%s\": %v", req.ReleaseName, redactArgs(myargs))
 	}
-	output, err := run(myargs)
-	if debug {
-		log.Info(level, "helm command for \"%s\" returned:\n%s", releaseName, string(output))
+	output, err := run(ctx, myargs)
+	if req.Debug {
+		log.Info(upgradeLogLevel, "helm command for \"%s\" returned:\n%s", req.ReleaseName, string(output))
 	}
 	if err != nil {
-		return UpgradedRelease{}, fmt.Errorf("running helm upgrade for release %q: %w", releaseName, err)
+		return UpgradedRelease{}, fmt.Errorf("running helm upgrade for release %q: %w", req.ReleaseName, err)
 	}
 
 	var upgradedRelease UpgradedRelease
 	if err := json.Unmarshal(output, &upgradedRelease); err != nil {
-		return UpgradedRelease{}, fmt.Errorf("parsing helm upgrade output for release %q: %w", releaseName, err)
+		return UpgradedRelease{}, fmt.Errorf("parsing helm upgrade output for release %q: %w", req.ReleaseName, err)
 	}
 	return upgradedRelease, nil
 }
@@ -176,7 +203,7 @@ func UpgradeWithValues(level int, namespace string, createNamespace bool, releas
 // archive together with a cleanup function the caller must invoke once the chart
 // has been loaded. Unlike a plain "helm pull", the chart is never written into
 // the current working directory.
-func Fetch(chart string, version string) (string, func(), error) {
+func Fetch(ctx context.Context, chart string, version string) (string, func(), error) {
 	noop := func() {}
 	tempDir, err := os.MkdirTemp("", "spray-")
 	if err != nil {
@@ -192,7 +219,7 @@ func Fetch(chart string, version string) (string, func(), error) {
 	if version != "" {
 		args = append(args, "--version", version)
 	}
-	cmd := exec.Command(binary(), args...) // #nosec G204 -- HELM_BIN (set by the helm host) or "helm"; args built internally, no shell
+	cmd := exec.CommandContext(ctx, binary(), args...) // #nosec G204 -- HELM_BIN (set by the helm host) or "helm"; args built internally, no shell
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -227,8 +254,8 @@ func Fetch(chart string, version string) (string, func(), error) {
 
 // run executes the helm binary with the given arguments and returns its stdout.
 // stderr is streamed to the process stderr so helm diagnostics remain visible.
-func run(args []string) ([]byte, error) {
-	cmd := exec.Command(binary(), args...) // #nosec G204 -- HELM_BIN (set by the helm host) or "helm"; args built internally, no shell
+func run(ctx context.Context, args []string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, binary(), args...) // #nosec G204 -- HELM_BIN (set by the helm host) or "helm"; args built internally, no shell
 	stdout := &bytes.Buffer{}
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr

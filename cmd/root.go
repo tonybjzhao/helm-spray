@@ -134,7 +134,7 @@ func NewRootCmd() *cobra.Command {
 				} else {
 					log.Info(1, "fetching chart from URL \"%s\"...", s.ChartName)
 				}
-				fetchedChartName, cleanup, err := helm.Fetch(s.ChartName, s.ChartVersion)
+				fetchedChartName, cleanup, err := helm.Fetch(cmd.Context(), s.ChartName, s.ChartVersion)
 				if err != nil {
 					return fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, err)
 				}
@@ -147,7 +147,7 @@ func NewRootCmd() *cobra.Command {
 				} else {
 					log.Info(1, "fetching chart \"%s\" from repos...", s.ChartName)
 				}
-				fetchedChartName, cleanup, err := helm.Fetch(s.ChartName, s.ChartVersion)
+				fetchedChartName, cleanup, err := helm.Fetch(cmd.Context(), s.ChartName, s.ChartVersion)
 				if err != nil {
 					return fmt.Errorf("fetching chart %s with version %s: %w", s.ChartName, s.ChartVersion, err)
 				}
@@ -157,7 +157,7 @@ func NewRootCmd() *cobra.Command {
 				log.Info(1, "processing chart from local file or directory \"%s\"...", s.ChartName)
 			}
 
-			return s.Spray()
+			return s.Spray(cmd.Context())
 		},
 	}
 

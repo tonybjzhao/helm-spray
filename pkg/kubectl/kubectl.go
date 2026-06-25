@@ -19,6 +19,7 @@ package kubectl
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -33,9 +34,9 @@ import (
 // AreDeploymentsReady reports whether every named Deployment in the namespace
 // has completed its rollout. A name that does not (yet) exist is treated as not
 // ready so the caller keeps waiting.
-func AreDeploymentsReady(names []string, namespace string, debug bool) (bool, error) {
+func AreDeploymentsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
 	var list appsv1.DeploymentList
-	if err := getList(namespace, "deployments", debug, &list); err != nil {
+	if err := getList(ctx, namespace, "deployments", debug, &list); err != nil {
 		return false, err
 	}
 	return allReady(names, list.Items,
@@ -45,9 +46,9 @@ func AreDeploymentsReady(names []string, namespace string, debug bool) (bool, er
 
 // AreStatefulSetsReady reports whether every named StatefulSet has completed its
 // rollout.
-func AreStatefulSetsReady(names []string, namespace string, debug bool) (bool, error) {
+func AreStatefulSetsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
 	var list appsv1.StatefulSetList
-	if err := getList(namespace, "statefulsets", debug, &list); err != nil {
+	if err := getList(ctx, namespace, "statefulsets", debug, &list); err != nil {
 		return false, err
 	}
 	return allReady(names, list.Items,
@@ -57,9 +58,9 @@ func AreStatefulSetsReady(names []string, namespace string, debug bool) (bool, e
 
 // AreDaemonSetsReady reports whether every named DaemonSet has rolled out to all
 // scheduled nodes.
-func AreDaemonSetsReady(names []string, namespace string, debug bool) (bool, error) {
+func AreDaemonSetsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
 	var list appsv1.DaemonSetList
-	if err := getList(namespace, "daemonsets", debug, &list); err != nil {
+	if err := getList(ctx, namespace, "daemonsets", debug, &list); err != nil {
 		return false, err
 	}
 	return allReady(names, list.Items,
@@ -70,9 +71,9 @@ func AreDaemonSetsReady(names []string, namespace string, debug bool) (bool, err
 // AreJobsReady reports whether every named Job has reached its required number of
 // successful completions. If a Job has definitively failed it returns an error so
 // the caller fails fast instead of waiting out the whole timeout.
-func AreJobsReady(names []string, namespace string, debug bool) (bool, error) {
+func AreJobsReady(ctx context.Context, names []string, namespace string, debug bool) (bool, error) {
 	var list batchv1.JobList
-	if err := getList(namespace, "jobs", debug, &list); err != nil {
+	if err := getList(ctx, namespace, "jobs", debug, &list); err != nil {
 		return false, err
 	}
 	return allReady(names, list.Items,
@@ -166,12 +167,12 @@ func allReady[T any](names []string, items []T, name func(*T) string, ready func
 
 // getList runs "kubectl get <resource> -o json" in the namespace and decodes the
 // result into the provided typed list.
-func getList(namespace, resource string, debug bool, into interface{}) error {
+func getList(ctx context.Context, namespace, resource string, debug bool, into interface{}) error {
 	args := []string{"--namespace", namespace, "get", resource, "-o", "json"}
 	if debug {
 		log.Info(3, "running kubectl command: %v", args)
 	}
-	cmd := exec.Command("kubectl", args...) // #nosec G204 -- fixed "kubectl get" subcommand; namespace/resource are argv elements, not a shell
+	cmd := exec.CommandContext(ctx, "kubectl", args...) // #nosec G204 -- fixed "kubectl get" subcommand; namespace/resource are argv elements, not a shell
 	out := &bytes.Buffer{}
 	cmd.Stdout = out
 	cmd.Stderr = os.Stderr

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: umbrella
+version: 0.1.0
+description: Test umbrella chart for helm-spray orchestration tests
+dependencies:
+  - name: alpha
+    version: 0.1.0
+    condition: alpha.enabled
+  - name: beta
+    version: 0.1.0
+    condition: beta.enabled
+  - name: gamma
+    version: 0.1.0
+    condition: gamma.enabled

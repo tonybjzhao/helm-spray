@@ -1,0 +1,6 @@
+alpha:
+  weight: 0
+beta:
+  weight: 1
+gamma:
+  weight: 1
