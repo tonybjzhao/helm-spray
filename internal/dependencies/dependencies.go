@@ -52,6 +52,17 @@ func Get(chart *chart.Chart, values *common.Values, targets []string, excludes [
 			dependencies[i].UsedName = dependencies[i].Alias
 		}
 
+		// helm-spray toggles each sub-chart per release with
+		// "--set <usedName>.enabled=...", which only gates rendering when the
+		// dependency declares "condition: <usedName>.enabled". If that contract is
+		// not met the disable set is silently ignored and every release would
+		// deploy all sub-charts, breaking tier ordering. Warn loudly so a
+		// misconfigured umbrella is diagnosable rather than silently incorrect.
+		expectedCondition := dependencies[i].UsedName + ".enabled"
+		if !strings.Contains(req.Condition, expectedCondition) {
+			log.Info(1, "warning: sub-chart %q should declare condition %q for per-release enable/disable to work (found %q); deployment ordering may be incorrect", dependencies[i].UsedName, expectedCondition, req.Condition)
+		}
+
 		// Is dependency targeted?
 		// If --target or --excludes are specified, it should match the name of the current dependency;
 		// If neither --target nor --exclude are specified, then all dependencies are targeted

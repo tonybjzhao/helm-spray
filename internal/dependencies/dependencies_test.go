@@ -10,6 +10,17 @@ import (
 // umbrella builds a minimal umbrella chart whose Metadata declares the given
 // dependencies, mirroring what loader.Load produces from a requirements list.
 func umbrella(deps ...*chart.Dependency) *chart.Chart {
+	// Default each dependency to the condition helm-spray expects, unless the
+	// test set one explicitly, so fixtures mirror a correctly authored umbrella.
+	for _, d := range deps {
+		if d.Condition == "" {
+			used := d.Name
+			if d.Alias != "" {
+				used = d.Alias
+			}
+			d.Condition = used + ".enabled"
+		}
+	}
 	return &chart.Chart{Metadata: &chart.Metadata{Name: "umbrella", Dependencies: deps}}
 }
 
