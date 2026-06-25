@@ -6,6 +6,8 @@ import (
 
 	"helm.sh/helm/v4/pkg/chart/common"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
+	loader "helm.sh/helm/v4/pkg/chart/v2/loader"
+	cliValues "helm.sh/helm/v4/pkg/cli/values"
 )
 
 func chartWithValues(valuesYAML string, files map[string]string) *chart.Chart {
@@ -90,5 +92,33 @@ func TestMergeMapsDeep(t *testing.T) {
 	}
 	if out["keep"] != "yes" || out["add"] != "new" {
 		t.Errorf("top-level merge incorrect: %v", out)
+	}
+}
+
+func TestMerge(t *testing.T) {
+	ch, err := loader.Load("../../pkg/helmspray/testdata/umbrella")
+	if err != nil {
+		t.Fatalf("loading test chart: %v", err)
+	}
+
+	// Default path: include processing + coalesce + CLI overlay.
+	merged, updated, err := Merge(ch, false, &cliValues.Options{Values: []string{"alpha.extra=true"}}, false)
+	if err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	if merged == nil {
+		t.Fatal("merged values are nil")
+	}
+	if !strings.Contains(updated, "weight") {
+		t.Errorf("processed default values should contain the umbrella values, got %q", updated)
+	}
+	alpha, _ := merged["alpha"].(map[string]any)
+	if alpha == nil || alpha["extra"] != true {
+		t.Errorf("the --set override should be merged in, got %v", merged["alpha"])
+	}
+
+	// Reuse-values path must also succeed.
+	if _, _, err := Merge(ch, true, &cliValues.Options{}, false); err != nil {
+		t.Fatalf("Merge with reuseValues: %v", err)
 	}
 }

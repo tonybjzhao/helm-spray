@@ -120,3 +120,34 @@ func TestAreDeploymentsReadyPropagatesError(t *testing.T) {
 		t.Fatal("expected the kubectl error to propagate")
 	}
 }
+
+func TestDaemonSetReady(t *testing.T) {
+	ready := appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Generation: 1},
+		Status: appsv1.DaemonSetStatus{
+			ObservedGeneration:     1,
+			DesiredNumberScheduled: 3,
+			UpdatedNumberScheduled: 3,
+			NumberReady:            3,
+			NumberUnavailable:      0,
+		},
+	}
+	if !daemonSetReady(&ready) {
+		t.Error("a fully rolled-out daemonset should be ready")
+	}
+	stale := *ready.DeepCopy()
+	stale.Status.ObservedGeneration = 0
+	if daemonSetReady(&stale) {
+		t.Error("a daemonset whose controller has not observed the latest generation should not be ready")
+	}
+	rolling := *ready.DeepCopy()
+	rolling.Status.UpdatedNumberScheduled = 2
+	if daemonSetReady(&rolling) {
+		t.Error("a daemonset mid-rollout should not be ready")
+	}
+	unavailable := *ready.DeepCopy()
+	unavailable.Status.NumberUnavailable = 1
+	if daemonSetReady(&unavailable) {
+		t.Error("a daemonset with unavailable pods should not be ready")
+	}
+}

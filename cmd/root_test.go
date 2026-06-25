@@ -79,3 +79,10 @@ func TestNamespaceFlagRegistered(t *testing.T) {
 		t.Errorf("--namespace shorthand = %q, want \"n\"", f.Shorthand)
 	}
 }
+
+func TestUnsupportedOutputFormat(t *testing.T) {
+	err := runCmd("-o", "yaml", "some-chart")
+	if err == nil || !strings.Contains(err.Error(), "unsupported --output format") {
+		t.Fatalf("expected an unsupported-format error, got %v", err)
+	}
+}
